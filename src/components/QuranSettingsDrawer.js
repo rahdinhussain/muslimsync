@@ -80,10 +80,11 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       const downloadedAud = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO);
       const audioList = downloadedAud ? JSON.parse(downloadedAud) : [];
       
+      const allReciterIds = RECITERS.map(r => r.id);
       // If a specific reciter is provided, check it; otherwise check all reciters
       const recitersToCheck = specificReciterId 
         ? [specificReciterId]
-        : [...new Set([...audioList, ...RECITERS.map(r => r.id)])]; // Check all reciters, not just those in the list
+        : [...new Set([...audioList, ...allReciterIds])]; // Check all reciters, not just those in the list
       
       const surahsPerReciter = {};
       
@@ -129,7 +130,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         reciter,
         downloadedTrans,
         downloadedAud,
-        downloadedSurahs
+        downloadedSurahs,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.ARABIC_FONT),
         AsyncStorage.getItem(STORAGE_KEYS.FONT_SIZE),
@@ -137,7 +138,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         AsyncStorage.getItem(STORAGE_KEYS.SELECTED_RECITER),
         AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_TRANSLATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO),
-        getDownloadedSurahs()
+        getDownloadedSurahs(),
       ]);
 
       if (font) setSelectedFont(font);
@@ -834,6 +835,15 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         }));
 
         try {
+          let audioUrl;
+
+          if (reciterId === 'arabic_english_r2') {
+            // Arabic & English combined recitation – download from your R2 bucket
+            const surahNum = surah.number.toString().padStart(3, '0');
+            const R2_BASE_URL =
+              'https://63b97aa5eed13083f7e69a95427aa14c.r2.cloudflarestorage.com/muslimsync/quran';
+            audioUrl = `${R2_BASE_URL}/${surahNum}.mp3`;
+          } else {
           // Map reciter IDs to Islamic Network CDN format (same as AudioPlayer)
           const reciterApiMap = {
             'mishary_rashid_alafasy': 'ar.alafasy',
@@ -850,7 +860,8 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           
           const reciterCode = reciterApiMap[reciterId] || reciterApiMap['mishary_rashid_alafasy'];
           // Use Islamic Network CDN (more reliable)
-          const audioUrl = `https://cdn.islamic.network/quran/audio-surah/128/${reciterCode}/${surah.number}.mp3`;
+            audioUrl = `https://cdn.islamic.network/quran/audio-surah/128/${reciterCode}/${surah.number}.mp3`;
+          }
           const fileUri = `${audioDir}${surah.number}.mp3`;
           
           // Check if file already exists
@@ -1453,7 +1464,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         />
         <SafeAreaView
           style={dynamicStyles.drawer}
-          edges={['top', 'right', 'bottom']}
+          edges={['top', 'right', 'bottom', 'left']}
         >
           <View style={dynamicStyles.drawerContent}>
             <View style={dynamicStyles.header}>
@@ -1650,10 +1661,152 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
               })}
             </View>
 
-            {/* Audio Recitations */}
+            {/* Arabic Recitations */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Audio Recitations</Text>
-              {RECITERS.map((reciter) => {
+              <Text style={dynamicStyles.sectionTitle}>Arabic Recitations</Text>
+              {RECITERS.filter(r => r.id !== 'arabic_english_r2').map((reciter) => {
+                const isDownloaded = downloadedAudio.includes(reciter.id);
+                const isSelected = selectedReciter === reciter.id;
+                const isDownloading = !!downloadingAudio[reciter.id];
+                const isPaused = !!pausedAudio[reciter.id];
+                const downloadProgress = downloadingAudio[reciter.id] || null;
+                const downloadedSurahs = downloadedSurahsPerReciter[reciter.id] || [];
+                const downloadedCount = downloadedSurahs.length;
+                const isBilingual = reciter.id === 'arabic_english_r2';
+                
+                return (
+                  <View key={reciter.id} style={dynamicStyles.translationRow}>
+                    <View style={dynamicStyles.translationInfo}>
+                      <Text style={dynamicStyles.translationName}>{reciter.name}</Text>
+                      {isSelected && (
+                        <Text style={dynamicStyles.translationSubtext}>Currently selected</Text>
+                      )}
+                      {isBilingual && !isDownloading && (
+                        <Text style={dynamicStyles.translationSubtext}>
+                          Streams Arabic & English recitation from your Cloudflare R2 bucket (no per-device download)
+                        </Text>
+                      )}
+                      {isDownloading && downloadProgress && !isBilingual && (
+                        <Text style={dynamicStyles.translationSubtext}>
+                          {isPaused ? 'Paused' : 'Downloading...'} ({downloadProgress.current}/{downloadProgress.total})
+                        </Text>
+                      )}
+                      {!isBilingual && !isDownloading && downloadedCount > 0 && (
+                        <TouchableOpacity
+                          onPress={() => setShowDownloadedSurahsList(showDownloadedSurahsList === reciter.id ? null : reciter.id)}
+                          style={{ marginTop: 4 }}
+                        >
+                          <Text style={[dynamicStyles.translationSubtext, { color: colors.text }]}>
+                            {downloadedCount === SURAHS.length 
+                              ? 'All 114 surahs downloaded' 
+                              : `${downloadedCount} surah(s) downloaded - Tap to view`}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {!isBilingual && !isDownloading && downloadedCount === 0 && !isSelected && (
+                        <Text style={dynamicStyles.translationSubtext}>Not downloaded</Text>
+                      )}
+                      {showDownloadedSurahsList === reciter.id && downloadedSurahs.length > 0 && !isBilingual && (
+                        <View style={{ marginTop: 8, padding: 10, backgroundColor: colors.card, borderRadius: 8 }}>
+                          <Text style={[dynamicStyles.translationSubtext, { marginBottom: 8, fontWeight: 'bold' }]}>
+                            Downloaded Surahs ({downloadedSurahs.length}):
+                          </Text>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                            {downloadedSurahs.sort((a, b) => a - b).map((surahNum) => {
+                              const surah = SURAHS.find(s => s.number === surahNum);
+                              return (
+                                <View
+                                  key={surahNum}
+                                  style={{
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 4,
+                                    backgroundColor: colors.iconBackground,
+                                    borderRadius: 6,
+                                    marginRight: 6,
+                                    marginBottom: 6,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, color: colors.text }}>
+                                    {surahNum}. {surah?.name || surahNum}
+                                  </Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Switch
+                        value={isSelected}
+                        onValueChange={(value) => handleReciterToggle(reciter.id, value)}
+                        trackColor={{ false: colors.textSecondary, true: colors.text }}
+                        thumbColor={isSelected ? colors.surface : colors.textSecondary}
+                        disabled={isDownloading}
+                      />
+                      {isDownloading && !isBilingual && (
+                        <>
+                          <TouchableOpacity
+                            onPress={() => isPaused ? resumeAudioDownload(reciter.id) : pauseAudioDownload(reciter.id)}
+                            style={{
+                              padding: 8,
+                              borderRadius: 8,
+                              backgroundColor: colors.text,
+                            }}
+                          >
+                            <Ionicons
+                              name={isPaused ? 'play' : 'pause'}
+                              size={20}
+                              color={colors.surface}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => cancelAudioDownload(reciter.id)}
+                            style={{
+                              padding: 8,
+                              borderRadius: 8,
+                              backgroundColor: colors.textSecondary,
+                            }}
+                          >
+                            <Ionicons
+                              name="close"
+                              size={20}
+                              color={colors.surface}
+                            />
+                          </TouchableOpacity>
+                        </>
+                      )}
+                      {!isDownloading && !isBilingual && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedReciterForSurah(reciter.id);
+                            setSelectedSurahsForDownload([]);
+                            setSelectedSurahsForDelete([]);
+                            setShowSurahSelector(true);
+                          }}
+                          style={{
+                            padding: 8,
+                            borderRadius: 8,
+                            backgroundColor: colors.text,
+                          }}
+                        >
+                          <Ionicons
+                            name="options-outline"
+                            size={20}
+                            color={colors.surface}
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Arabic & English Recitation */}
+            <View style={dynamicStyles.section}>
+              <Text style={dynamicStyles.sectionTitle}>Arabic & English Recitation</Text>
+              {RECITERS.filter(r => r.id === 'arabic_english_r2').map((reciter) => {
                 const isDownloaded = downloadedAudio.includes(reciter.id);
                 const isSelected = selectedReciter === reciter.id;
                 const isDownloading = !!downloadingAudio[reciter.id];
@@ -1803,9 +1956,19 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         }}
       >
         <View style={dynamicStyles.overlay}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => {
+              setShowSurahSelector(false);
+              setSelectedReciterForSurah(null);
+              setSelectedSurahsForDownload([]);
+              setSelectedSurahsForDelete([]);
+            }}
+          />
           <SafeAreaView
             style={dynamicStyles.drawer}
-            edges={['top', 'right', 'bottom']}
+            edges={['top', 'right', 'bottom', 'left']}
           >
             <View style={dynamicStyles.drawerContent}>
               <View style={dynamicStyles.header}>

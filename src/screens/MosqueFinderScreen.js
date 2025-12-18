@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,213 +6,167 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   TextInput,
-  Linking,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
-import { GOOGLE_PLACES_API_KEY, isGooglePlacesKeySet } from '../config/apiKeys';
-
-// Calculate distance between two coordinates (Haversine formula)
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Radius of the Earth in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  return distance;
-};
-
-// Format distance for display
-const formatDistance = (distance) => {
-  if (distance < 1) {
-    return `${Math.round(distance * 1000)} m`;
-  }
-  return `${distance.toFixed(1)} km`;
-};
+import { supabase } from '../lib/supabase';
 
 export default function MosqueFinderScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const [location, setLocation] = useState(null);
+  const PAGE_SIZE = 20;
+  const [searchQuery, setSearchQuery] = useState('');
   const [mosques, setMosques] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState(null);
+  const [filterCountry, setFilterCountry] = useState('');
+  const [filterState, setFilterState] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showCountryOptions, setShowCountryOptions] = useState(false);
+  const [showStateOptions, setShowStateOptions] = useState(false);
+  const [showCityOptions, setShowCityOptions] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const scrollViewRef = useRef(null);
 
   useEffect(() => {
-    getLocation();
+    const fetchMosques = async () => {
+      try {
+        setLoading(true);
+        setLoadError(null);
+
+        const { data, error } = await supabase
+          .from('mosques')
+          .select('id, name, country, state, city, street, zip, latitude, longitude, phone, website')
+          .order('city', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Error loading mosques from Supabase:', error.message || error);
+          setLoadError(error.message || 'Failed to load mosques. Please try again later.');
+          setMosques([]);
+        } else {
+          const mapped = (data || []).map((row) => ({
+            id: row.id,
+            name: row.name,
+            country: row.country,
+            state: row.state,
+            city: row.city,
+            address: row.street, // keep using address field in UI
+            zip: row.zip,
+            latitude: row.latitude,
+            longitude: row.longitude,
+            phone: row.phone,
+            website: row.website,
+            prayerTimes: null, // daily times now come from separate table
+          }));
+          setMosques(mapped);
+        }
+      } catch (err) {
+        console.error('Unexpected error loading mosques:', err);
+        setLoadError('Failed to load mosques. Please check your connection.');
+        setMosques([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMosques();
   }, []);
 
-  const getLocation = async () => {
-    try {
-      // Request location permission
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission Denied',
-          'Location permission is required to find nearby mosques. Please enable location access in your device settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
-          ]
-        );
-        setLoading(false);
-        return;
-      }
+  // Reset visible count when filters or search change
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchQuery, filterCountry, filterState, filterCity]);
 
-      let locationData = await Location.getCurrentPositionAsync({});
-      setLocation(locationData.coords);
-      await fetchNearbyMosques(locationData.coords.latitude, locationData.coords.longitude);
-    } catch (error) {
-      console.error('Error getting location:', error);
-      Alert.alert('Error', 'Failed to get location. Please try again.');
-      setLoading(false);
-    }
-  };
+  const activeFilterCount =
+    (filterCountry ? 1 : 0) +
+    (filterState ? 1 : 0) +
+    (filterCity ? 1 : 0);
 
-  const fetchNearbyMosques = async (latitude, longitude) => {
-    try {
-      setLoading(true);
-      
-      // Check if API key is set
-      if (!isGooglePlacesKeySet()) {
-        Alert.alert(
-          'API Key Required',
-          'Google Places API key is not configured. Please add your API key in src/config/apiKeys.js\n\n' +
-          'To get a free API key:\n' +
-          '1. Go to https://console.cloud.google.com/\n' +
-          '2. Create a project and enable "Places API"\n' +
-          '3. Create an API key in Credentials\n' +
-          '4. Add it to src/config/apiKeys.js',
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-        setMosques([]);
-        return;
-      }
-      
-      // Search for mosques using Google Places API
-      const radius = 5000; // 5km radius
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=mosque&keyword=mosque&key=${GOOGLE_PLACES_API_KEY}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
+  const filteredMosques = useMemo(() => {
+    return mosques.filter((mosque) => {
+      const matchesSearch =
+        mosque.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        mosque.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        mosque.city.toLowerCase().includes(searchQuery.toLowerCase());
 
-      if (data.status === 'OK' && data.results) {
-        // Fetch detailed information including phone numbers
-        const mosquesWithDetails = await Promise.all(
-          data.results.map(async (place) => {
-            // Get place details for phone number
-            const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,geometry,place_id&key=${GOOGLE_PLACES_API_KEY}`;
-            
-            try {
-              const detailsResponse = await fetch(detailsUrl);
-              const detailsData = await detailsResponse.json();
-              
-              if (detailsData.status === 'OK' && detailsData.result) {
-                const placeDetails = detailsData.result;
-                const placeLat = placeDetails.geometry?.location?.lat || place.geometry.location.lat;
-                const placeLng = placeDetails.geometry?.location?.lng || place.geometry.location.lng;
-                const distance = calculateDistance(latitude, longitude, placeLat, placeLng);
-                
-                return {
-                  id: place.place_id,
-                  name: placeDetails.name || place.name,
-                  address: placeDetails.formatted_address || place.vicinity || 'Address not available',
-                  distance: formatDistance(distance),
-                  distanceValue: distance, // For sorting
-                  latitude: placeLat,
-                  longitude: placeLng,
-                  phone: placeDetails.formatted_phone_number || null,
-                  placeId: place.place_id,
-                };
-              }
-            } catch (error) {
-              console.error('Error fetching place details:', error);
-            }
-            
-            // Fallback if details fetch fails
-            const placeLat = place.geometry.location.lat;
-            const placeLng = place.geometry.location.lng;
-            const distance = calculateDistance(latitude, longitude, placeLat, placeLng);
-            
-            return {
-              id: place.place_id,
-              name: place.name,
-              address: place.vicinity || 'Address not available',
-              distance: formatDistance(distance),
-              distanceValue: distance,
-              latitude: placeLat,
-              longitude: placeLng,
-              phone: null,
-              placeId: place.place_id,
-            };
-          })
-        );
+      const matchesCountry =
+        !filterCountry ||
+        (mosque.country || '').toLowerCase() === filterCountry.toLowerCase();
+      const matchesState =
+        !filterState ||
+        (mosque.state || '').toLowerCase() === filterState.toLowerCase();
+      const matchesCityFilter =
+        !filterCity ||
+        (mosque.city || '').toLowerCase() === filterCity.toLowerCase();
 
-        // Sort by distance (closest first)
-        mosquesWithDetails.sort((a, b) => a.distanceValue - b.distanceValue);
-        
-        setMosques(mosquesWithDetails);
-      } else if (data.status === 'ZERO_RESULTS') {
-        setMosques([]);
-        Alert.alert('No Results', 'No mosques found nearby. Try expanding your search area.');
-      } else if (data.status === 'REQUEST_DENIED') {
-        console.error('Google Places API error:', data.status, data.error_message);
-        Alert.alert(
-          'API Key Error',
-          `The Google Places API key is invalid or not properly configured.\n\n` +
-          `Error: ${data.error_message || data.status}\n\n` +
-          `Please check:\n` +
-          `1. Your API key in src/config/apiKeys.js\n` +
-          `2. That "Places API" is enabled in Google Cloud Console\n` +
-          `3. That your API key has proper restrictions/permissions`
-        );
-        setMosques([]);
-      } else {
-        console.error('Google Places API error:', data.status, data.error_message);
-        Alert.alert('Error', `Failed to fetch mosques: ${data.error_message || data.status}`);
-        setMosques([]);
-      }
-    } catch (error) {
-      console.error('Error fetching mosques:', error);
-      Alert.alert('Error', 'Failed to fetch nearby mosques. Please check your internet connection and try again.');
-      setMosques([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openDirections = (mosque) => {
-    const { latitude, longitude, name } = mosque;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&destination_place_id=${mosque.placeId}`;
-    
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        // Fallback to regular Google Maps URL
-        const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-        Linking.openURL(fallbackUrl);
-      }
-    }).catch(err => {
-      console.error('Error opening directions:', err);
-      Alert.alert('Error', 'Unable to open Google Maps. Please install Google Maps app.');
+      return matchesSearch && matchesCountry && matchesState && matchesCityFilter;
     });
-  };
+  }, [mosques, searchQuery, filterCountry, filterState, filterCity]);
 
-  const filteredMosques = mosques.filter((mosque) =>
-    mosque.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    mosque.address.toLowerCase().includes(searchQuery.toLowerCase())
+  const limitedMosques = useMemo(
+    () => filteredMosques.slice(0, visibleCount),
+    [filteredMosques, visibleCount]
   );
+
+  const hasMore = filteredMosques.length > visibleCount;
+
+  const groupedByCity = useMemo(() => {
+    return limitedMosques.reduce((groups, mosque) => {
+      if (!groups[mosque.city]) {
+        groups[mosque.city] = [];
+      }
+      groups[mosque.city].push(mosque);
+      return groups;
+    }, {});
+  }, [limitedMosques]);
+
+  // Distinct lists for dropdowns
+  const availableCountries = useMemo(() => {
+    const set = new Set(
+      mosques
+        .map((m) => m.country)
+        .filter((c) => c && c.trim().length > 0)
+    );
+    return Array.from(set).sort();
+  }, [mosques]);
+
+  const availableStates = useMemo(() => {
+    if (!filterCountry) return [];
+    const set = new Set(
+      mosques
+        .filter(
+          (m) =>
+            m.country &&
+            m.country.toLowerCase() === filterCountry.toLowerCase()
+        )
+        .map((m) => m.state)
+        .filter((s) => s && s.trim().length > 0)
+    );
+    return Array.from(set).sort();
+  }, [mosques, filterCountry]);
+
+  const availableCities = useMemo(() => {
+    if (!filterCountry || !filterState) return [];
+    const set = new Set(
+      mosques
+        .filter(
+          (m) =>
+            m.country &&
+            m.state &&
+            m.country.toLowerCase() === filterCountry.toLowerCase() &&
+            m.state.toLowerCase() === filterState.toLowerCase()
+        )
+        .map((m) => m.city)
+        .filter((c) => c && c.trim().length > 0)
+    );
+    return Array.from(set).sort();
+  }, [mosques, filterCountry, filterState]);
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {
@@ -222,16 +176,6 @@ export default function MosqueFinderScreen() {
     container: {
       flex: 1,
       backgroundColor: colors.surface,
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-    },
-    loadingText: {
-      marginTop: 10,
-      color: colors.textSecondary,
     },
     header: {
       backgroundColor: colors.header,
@@ -275,6 +219,11 @@ export default function MosqueFinderScreen() {
       fontSize: 16,
       color: colors.text,
     },
+    filterIconButton: {
+      marginLeft: 8,
+      padding: 4,
+      position: 'relative',
+    },
     mosqueCard: {
       backgroundColor: colors.card,
       borderRadius: 15,
@@ -309,12 +258,6 @@ export default function MosqueFinderScreen() {
       marginLeft: 5,
       flex: 1,
     },
-    mosqueDistance: {
-      fontSize: 14,
-      color: colors.text,
-      marginLeft: 5,
-      fontWeight: '600',
-    },
     mosquePhone: {
       fontSize: 14,
       color: colors.textSecondary,
@@ -325,36 +268,129 @@ export default function MosqueFinderScreen() {
       color: colors.textSecondary,
       marginTop: 10,
     },
-    refreshButton: {
-      flexDirection: 'row',
-      backgroundColor: colors.iconBackground,
-      margin: 20,
-      padding: 15,
-      borderRadius: 15,
+    cityHeader: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      marginTop: 10,
+      marginBottom: 6,
+    },
+    filterModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'center',
       alignItems: 'center',
-      ...(isDark ? {} : {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }),
     },
-    refreshButtonText: {
-      color: colors.text,
-      fontSize: 16,
+    filterModalContent: {
+      width: '90%',
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 20,
+    },
+    filterTitle: {
+      fontSize: 18,
       fontWeight: '600',
-      marginLeft: 10,
+      color: colors.text,
+      marginBottom: 12,
+    },
+    filterFieldLabel: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: 10,
+      marginBottom: 4,
+    },
+    filterInput: {
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.cardSecondary,
+      color: colors.text,
+    },
+    dropdownField: {
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.cardSecondary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    dropdownValueText: {
+      fontSize: 14,
+      color: colors.text,
+    },
+    dropdownPlaceholderText: {
+      fontSize: 14,
+      color: colors.textTertiary,
+    },
+    optionsList: {
+      position: 'absolute',
+      top: 44,
+      left: 0,
+      right: 0,
+      maxHeight: 160,
+      borderRadius: 10,
+      backgroundColor: colors.cardSecondary,
+      paddingVertical: 4,
+      zIndex: 10,
+    },
+    optionItem: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    optionText: {
+      fontSize: 14,
+      color: colors.text,
+    },
+    filterButtonsRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 16,
+    },
+    filterButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 12,
+      marginLeft: 8,
+      backgroundColor: colors.cardSecondary,
+    },
+    filterButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    filterBadge: {
+      position: 'absolute',
+      top: -2,
+      right: -2,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    filterBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.surface,
     },
   });
 
   if (loading) {
     return (
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
-        <View style={dynamicStyles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.text} />
-          <Text style={dynamicStyles.loadingText}>Finding nearby mosques...</Text>
+        <View style={dynamicStyles.container}>
+          <View style={[dynamicStyles.header, { marginBottom: 0 }]}>
+            <Text style={dynamicStyles.headerTitle}>Find Mosques</Text>
+            <Text style={dynamicStyles.headerSubtitle}>
+              Loading mosques from Supabase...
+            </Text>
+          </View>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={colors.text} />
+            <Text style={dynamicStyles.emptyText}>Please wait</Text>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -366,9 +402,17 @@ export default function MosqueFinderScreen() {
       <View style={dynamicStyles.header}>
         <Text style={dynamicStyles.headerTitle}>Find Mosques</Text>
         <Text style={dynamicStyles.headerSubtitle}>
-          Discover mosques near you
+          Browse and filter mosques
         </Text>
       </View>
+
+      {loadError && (
+        <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+          <Text style={[dynamicStyles.emptyText, { color: colors.text }]}>
+            {loadError}
+          </Text>
+        </View>
+      )}
 
       <View style={dynamicStyles.searchContainer}>
         <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
@@ -384,63 +428,274 @@ export default function MosqueFinderScreen() {
             <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          style={dynamicStyles.filterIconButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Ionicons name="options-outline" size={22} color={colors.textSecondary} />
+          {activeFilterCount > 0 && (
+            <View style={dynamicStyles.filterBadge}>
+              <Text style={dynamicStyles.filterBadgeText}>
+                {activeFilterCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.mosquesList}>
+      {/* Filter modal */}
+      <Modal
+        transparent
+        visible={showFilterModal}
+        animationType="fade"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={dynamicStyles.filterModalOverlay}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={dynamicStyles.filterModalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={dynamicStyles.filterTitle}>Filters</Text>
+
+            <Text style={dynamicStyles.filterFieldLabel}>Country</Text>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={dynamicStyles.dropdownField}
+                onPress={() => {
+                  setShowCountryOptions((v) => !v);
+                  setShowStateOptions(false);
+                  setShowCityOptions(false);
+                }}
+              >
+                <Text
+                  style={
+                    filterCountry
+                      ? dynamicStyles.dropdownValueText
+                      : dynamicStyles.dropdownPlaceholderText
+                  }
+                >
+                  {filterCountry || 'Select country'}
+                </Text>
+                <Ionicons
+                  name={showCountryOptions ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {showCountryOptions && (
+                <ScrollView style={dynamicStyles.optionsList}>
+                  {availableCountries.map((country) => (
+                    <TouchableOpacity
+                      key={country}
+                      style={dynamicStyles.optionItem}
+                      onPress={() => {
+                        setFilterCountry(country);
+                        setFilterState('');
+                        setFilterCity('');
+                        setShowCountryOptions(false);
+                      }}
+                    >
+                      <Text style={dynamicStyles.optionText}>{country}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <Text style={dynamicStyles.filterFieldLabel}>State / Province</Text>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={dynamicStyles.dropdownField}
+                onPress={() => {
+                  if (!filterCountry) return;
+                  setShowStateOptions((v) => !v);
+                  setShowCountryOptions(false);
+                  setShowCityOptions(false);
+                }}
+                disabled={!filterCountry}
+              >
+                <Text
+                  style={
+                    filterState
+                      ? dynamicStyles.dropdownValueText
+                      : dynamicStyles.dropdownPlaceholderText
+                  }
+                >
+                  {filterCountry
+                    ? filterState || 'Select state / province'
+                    : 'Select country first'}
+                </Text>
+                <Ionicons
+                  name={showStateOptions ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {showStateOptions && (
+                <ScrollView style={dynamicStyles.optionsList}>
+                  {availableStates.map((state) => (
+                    <TouchableOpacity
+                      key={state}
+                      style={dynamicStyles.optionItem}
+                      onPress={() => {
+                        setFilterState(state);
+                        setFilterCity('');
+                        setShowStateOptions(false);
+                      }}
+                    >
+                      <Text style={dynamicStyles.optionText}>{state}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <Text style={dynamicStyles.filterFieldLabel}>City</Text>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={dynamicStyles.dropdownField}
+                onPress={() => {
+                  if (!filterCountry || !filterState) return;
+                  setShowCityOptions((v) => !v);
+                  setShowCountryOptions(false);
+                  setShowStateOptions(false);
+                }}
+                disabled={!filterCountry || !filterState}
+              >
+                <Text
+                  style={
+                    filterCity
+                      ? dynamicStyles.dropdownValueText
+                      : dynamicStyles.dropdownPlaceholderText
+                  }
+                >
+                  {filterCountry && filterState
+                    ? filterCity || 'Select city'
+                    : 'Select country & state first'}
+                </Text>
+                <Ionicons
+                  name={showCityOptions ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {showCityOptions && (
+                <ScrollView style={dynamicStyles.optionsList}>
+                  {availableCities.map((city) => (
+                    <TouchableOpacity
+                      key={city}
+                      style={dynamicStyles.optionItem}
+                      onPress={() => {
+                        setFilterCity(city);
+                        setShowCityOptions(false);
+                      }}
+                    >
+                      <Text style={dynamicStyles.optionText}>{city}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <View style={dynamicStyles.filterButtonsRow}>
+              <TouchableOpacity
+                style={dynamicStyles.filterButton}
+                onPress={() => {
+                  setFilterCountry('');
+                  setFilterState('');
+                  setFilterCity('');
+                  setShowCountryOptions(false);
+                  setShowStateOptions(false);
+                  setShowCityOptions(false);
+                }}
+              >
+                <Text style={dynamicStyles.filterButtonText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={dynamicStyles.filterButton}
+                onPress={() => setShowFilterModal(false)}
+              >
+                <Text style={dynamicStyles.filterButtonText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <ScrollView
+        style={styles.mosquesList}
+        ref={scrollViewRef}
+      >
         {filteredMosques.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="location-outline" size={64} color={colors.textTertiary} />
             <Text style={dynamicStyles.emptyText}>No mosques found</Text>
           </View>
         ) : (
-          filteredMosques.map((mosque) => (
-            <View key={mosque.id} style={dynamicStyles.mosqueCard}>
-              <View style={styles.mosqueCardContent}>
-                <View style={dynamicStyles.mosqueIcon}>
-                  <Ionicons name="location" size={28} color={colors.text} />
-                </View>
-                <TouchableOpacity
-                  style={styles.mosqueInfo}
-                  onPress={() =>
-                    navigation.navigate('MosqueSchedule', { mosque })
-                  }
-                >
-                  <Text style={dynamicStyles.mosqueName}>{mosque.name}</Text>
-                  <View style={styles.mosqueDetails}>
-                    <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
-                    <Text style={dynamicStyles.mosqueAddress}>{mosque.address}</Text>
-                  </View>
-                  <View style={styles.mosqueDetails}>
-                    <Ionicons name="navigate" size={14} color={colors.textSecondary} />
-                    <Text style={dynamicStyles.mosqueDistance}>{mosque.distance} away</Text>
-                  </View>
-                  {mosque.phone && (
-                    <View style={styles.mosqueDetails}>
-                      <Ionicons name="call-outline" size={14} color={colors.textSecondary} />
-                      <Text style={dynamicStyles.mosquePhone}>{mosque.phone}</Text>
+          <>
+            {Object.entries(groupedByCity).map(([city, cityMosques]) => (
+              <View key={city}>
+                <Text style={dynamicStyles.cityHeader}>{city}</Text>
+                {cityMosques.map((mosque) => (
+                  <TouchableOpacity
+                    key={mosque.id}
+                    style={dynamicStyles.mosqueCard}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      navigation.navigate('MosqueSchedule', { mosque })
+                    }
+                  >
+                    <View style={styles.mosqueCardContent}>
+                      <View style={dynamicStyles.mosqueIcon}>
+                        <Ionicons name="location" size={28} color={colors.text} />
+                      </View>
+                      <View style={styles.mosqueInfo}>
+                        <Text style={dynamicStyles.mosqueName}>{mosque.name}</Text>
+                        <View style={styles.mosqueDetails}>
+                          <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                          <Text style={dynamicStyles.mosqueAddress}>{mosque.address}</Text>
+                        </View>
+                      </View>
                     </View>
-                  )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+
+            {hasMore && (
+              <View style={{ paddingHorizontal: 0, paddingVertical: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: colors.cardSecondary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => {
+                    setVisibleCount((prev) => prev + PAGE_SIZE);
+                    // After loading more, scroll to the end so the button stays at the bottom
+                    setTimeout(() => {
+                      if (scrollViewRef.current) {
+                        scrollViewRef.current.scrollToEnd({ animated: true });
+                      }
+                    }, 0);
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>
+                    Load more mosques
+                  </Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.directionsButton, { backgroundColor: colors.cardSecondary }]}
-                onPress={() => openDirections(mosque)}
-              >
-                <Ionicons name="navigate" size={18} color={colors.text} />
-                <Text style={[styles.directionsButtonText, { color: colors.text }]}>Directions</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+            )}
+          </>
         )}
       </ScrollView>
-
-      <TouchableOpacity
-        style={dynamicStyles.refreshButton}
-        onPress={getLocation}
-      >
-        <Ionicons name="refresh" size={20} color={colors.text} />
-        <Text style={dynamicStyles.refreshButtonText}>Refresh Location</Text>
-      </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

@@ -31,6 +31,7 @@ import {
   isBookmarked as checkBookmark,
   getSurahTranslation,
   TRANSLATIONS,
+  RECITERS,
 } from '../utils/quranStorage';
 
 import { SURAHS } from '../data/surahs';
@@ -55,6 +56,7 @@ export default function QuranScreen() {
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [arabicFont, setArabicFont] = useState('system');
   const [fontSize, setFontSize] = useState(22);
+  const [recitationLanguageLabel, setRecitationLanguageLabel] = useState(null);
 
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
@@ -97,6 +99,22 @@ export default function QuranScreen() {
       console.log('Error loading font settings:', error);
     }
   };
+  useEffect(() => {
+    if (!reciterId) {
+      setRecitationLanguageLabel(null);
+      return;
+    }
+    const reciter = RECITERS.find(r => r.id === reciterId);
+    if (reciter) {
+      if (reciter.id === 'arabic_english_r2') {
+        setRecitationLanguageLabel(`Arabic & English recitation – ${reciter.name}`);
+      } else {
+        setRecitationLanguageLabel(`Arabic recitation – ${reciter.name}`);
+      }
+      return;
+    }
+    setRecitationLanguageLabel(null);
+  }, [reciterId]);
 
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
@@ -1515,10 +1533,17 @@ export default function QuranScreen() {
                 ListHeaderComponent={
                   <>
                     {reciterId && (
-                      <AudioPlayer
-                        surahNumber={selectedSurah.number}
-                        reciterId={reciterId}
-                      />
+                      <>
+                        {recitationLanguageLabel && (
+                          <Text style={[dynamicStyles.audioRecitationLabel, { color: colors.textSecondary }]}>
+                            {recitationLanguageLabel}
+                          </Text>
+                        )}
+                        <AudioPlayer
+                          surahNumber={selectedSurah.number}
+                          reciterId={reciterId}
+                        />
+                      </>
                     )}
                     <View style={dynamicStyles.bismillah}>
                       <Text style={[

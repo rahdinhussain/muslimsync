@@ -20,9 +20,29 @@ import AboutScreen from './src/screens/AboutScreen';
 import ThemeScreen from './src/screens/ThemeScreen';
 import PrayerTimeCalculationScreen from './src/screens/PrayerTimeCalculationScreen';
 import HelpSupportScreen from './src/screens/HelpSupportScreen';
+import QiblaScreen from './src/screens/QiblaScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+function HomeStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen 
+        name="HomeMain" 
+        component={PrayerTimesScreen}
+      />
+      <Stack.Screen 
+        name="Qibla" 
+        component={QiblaScreen}
+      />
+    </Stack.Navigator>
+  );
+}
 
 function MosqueStack() {
   return (
@@ -127,7 +147,7 @@ function AppContent() {
       >
         <Tab.Screen 
           name="Home" 
-          component={PrayerTimesScreen}
+          component={HomeStack}
         />
         <Tab.Screen 
           name="Quran" 

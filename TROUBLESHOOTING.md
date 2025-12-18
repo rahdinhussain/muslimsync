@@ -71,3 +71,4 @@ Instead of Expo Go on a physical device:
 ## Solution: Development Build
 For production apps with many features, a development build is recommended over Expo Go.
 
+

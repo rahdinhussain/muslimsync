@@ -10,13 +10,11 @@ const STORAGE_KEYS = {
   DOWNLOADED_TRANSLATIONS: '@quran_downloaded_translations',
 };
 
-// Available Reciters (matching Islamic Network CDN format)
+// Available Reciters
 export const RECITERS = [
   { id: 'mishary_rashid_alafasy', name: 'Mishary Rashid Alafasy' },
-  { id: 'abdul_basit_murattal', name: 'Abdul Basit Murattal' },
-  { id: 'abdurrahmaan_alsudais', name: 'Abdur-Rahman As-Sudais' },
-  { id: 'saad_al_ghamdi', name: 'Saad Al-Ghamdi' },
-  { id: 'maher_al_muaiqly', name: 'Maher Al Muaiqly' },
+  // Streams from your Cloudflare R2 bucket (Arabic + English combined audio)
+  { id: 'arabic_english_r2', name: 'Arabic & English Recitation' },
 ];
 
 // Available Translations
@@ -231,4 +229,6 @@ export const isTranslationDownloaded = async (translationId) => {
     return false;
   }
 };
+
+
 

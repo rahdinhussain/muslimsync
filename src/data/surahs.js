@@ -116,3 +116,4 @@ export const SURAHS = [
   { number: 114, name: 'An-Nas', nameArabic: 'الناس', ayahs: 6 },
 ];
 
+

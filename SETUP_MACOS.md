@@ -46,3 +46,4 @@ This only works for the current terminal session.
 
 Watchman is specifically designed for this use case and is the recommended solution by Expo and React Native teams.
 
+

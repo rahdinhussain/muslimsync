@@ -6,13 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   Linking,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 
 export default function MosqueScheduleScreen({ route }) {
   const { colors, isDark } = useTheme();
+  const navigation = useNavigation();
   const { mosque } = route.params || {};
 
   const dynamicStyles = StyleSheet.create({
@@ -38,6 +42,13 @@ export default function MosqueScheduleScreen({ route }) {
       borderBottomLeftRadius: 30,
       borderBottomRightRadius: 30,
     },
+    backButton: {
+      position: 'absolute',
+      left: 15,
+      top: 15,
+      padding: 5,
+      zIndex: 1,
+    },
     mosqueIconContainer: {
       width: 80,
       height: 80,
@@ -62,11 +73,10 @@ export default function MosqueScheduleScreen({ route }) {
     actionButton: {
       flexDirection: 'row',
       backgroundColor: colors.iconBackground,
-      paddingHorizontal: 25,
-      paddingVertical: 15,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
       borderRadius: 15,
       alignItems: 'center',
-      flex: 1,
       marginHorizontal: 5,
       ...(isDark ? {} : {
         shadowColor: colors.shadow,
@@ -151,6 +161,11 @@ export default function MosqueScheduleScreen({ route }) {
       color: colors.textSecondary,
       lineHeight: 20,
     },
+      contactText: {
+        fontSize: 14,
+        color: colors.text,
+        marginLeft: 8,
+      },
   });
 
   if (!mosque) {
@@ -171,33 +186,127 @@ export default function MosqueScheduleScreen({ route }) {
     Isha: { name: 'Isha', icon: 'moon', color: '#4B0082' },
   };
 
-  const handleCall = () => {
-    if (mosque.phone) {
-      Linking.openURL(`tel:${mosque.phone}`);
+  const handleCall = async () => {
+    if (!mosque.phone) return;
+
+    try {
+      // Clean up the phone number so it's dialable
+      let phone = String(mosque.phone).trim();
+      // Allow digits and leading +, strip spaces/dashes/brackets etc.
+      phone = phone.replace(/(?!^\+)[^\d]/g, '');
+
+      const url = `tel:${phone}`;
+      const canOpen = await Linking.canOpenURL(url);
+
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Unable to place call', 'Calling is not supported on this device.');
+      }
+    } catch (error) {
+      console.log('Error opening dialer:', error);
+      Alert.alert('Error', 'Unable to open the phone dialer.');
     }
   };
 
-  const handleDirections = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${mosque.latitude},${mosque.longitude}`;
-    Linking.openURL(url);
+  const handleOpenWebsite = () => {
+    if (!mosque.website) return;
+    let url = mosque.website.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
+    }
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Unable to open website.');
+    });
   };
+
+  const handleDirections = () => {
+    const parts = [];
+    if (mosque.address) parts.push(mosque.address);
+    if (mosque.city) parts.push(mosque.city);
+    if (mosque.state) parts.push(mosque.state);
+    const query = encodeURIComponent(parts.join(', '));
+
+    const openAppleMaps = () => {
+      const url = `http://maps.apple.com/?q=${query}`;
+      Linking.openURL(url).catch(() => {
+        // Fallback to web Google Maps
+        const webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        Linking.openURL(webUrl).catch(() => {
+          Alert.alert('Error', 'Unable to open maps.');
+        });
+      });
+    };
+
+    const openGoogleMaps = () => {
+      const iosUrl = `comgooglemaps://?q=${query}`;
+      const webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+      if (Platform.OS === 'ios') {
+        Linking.openURL(iosUrl).catch(() => {
+          Linking.openURL(webUrl).catch(() => {
+            Alert.alert('Error', 'Unable to open Google Maps.');
+          });
+        });
+      } else {
+        Linking.openURL(webUrl).catch(() => {
+          Alert.alert('Error', 'Unable to open Google Maps.');
+        });
+      }
+    };
+
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'Open Directions',
+        'Choose maps app',
+        [
+          { text: 'Apple Maps', onPress: openAppleMaps },
+          { text: 'Google Maps', onPress: openGoogleMaps },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+        { cancelable: true }
+      );
+    } else {
+      Alert.alert(
+        'Open Directions',
+        'Choose maps app',
+        [
+          { text: 'Google Maps', onPress: openGoogleMaps },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const fullAddress = [
+    mosque.address,
+    mosque.city,
+    mosque.state,
+    mosque.zip,
+    mosque.country,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
-        <View style={dynamicStyles.mosqueIconContainer}>
-          <Ionicons name="location" size={40} color={colors.text} />
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={dynamicStyles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
         <Text style={dynamicStyles.mosqueName}>{mosque.name}</Text>
-        <Text style={dynamicStyles.mosqueAddress}>{mosque.address}</Text>
+        <Text style={dynamicStyles.mosqueAddress}>{fullAddress}</Text>
       </View>
 
       <View style={styles.actionsContainer}>
         {mosque.phone && (
           <TouchableOpacity style={dynamicStyles.actionButton} onPress={handleCall}>
             <Ionicons name="call" size={24} color={colors.text} />
-            <Text style={dynamicStyles.actionButtonText}>Call</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
@@ -205,8 +314,15 @@ export default function MosqueScheduleScreen({ route }) {
           onPress={handleDirections}
         >
           <Ionicons name="navigate" size={24} color={colors.text} />
-          <Text style={dynamicStyles.actionButtonText}>Directions</Text>
         </TouchableOpacity>
+        {mosque.website && (
+          <TouchableOpacity
+            style={dynamicStyles.actionButton}
+            onPress={handleOpenWebsite}
+          >
+            <Ionicons name="globe-outline" size={24} color={colors.text} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.scheduleContainer}>
@@ -249,7 +365,8 @@ export default function MosqueScheduleScreen({ route }) {
 const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: 'row',
-    padding: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     justifyContent: 'space-around',
   },
   scheduleContainer: {
@@ -260,6 +377,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  contactContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
   },
   infoContainer: {
     padding: 20,

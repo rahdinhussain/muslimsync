@@ -391,6 +391,20 @@ export default function PrayerTimesScreen() {
     },
     {
       id: 3,
+      title: 'Qibla',
+      icon: 'compass',
+      color: colors.text,
+      screen: 'Qibla',
+    },
+    {
+      id: 4,
+      title: 'Duas',
+      icon: 'hand-left',
+      color: colors.text,
+      screen: 'Dua',
+    },
+    {
+      id: 5,
       title: 'Find Mosques',
       icon: 'location',
       color: colors.text,
@@ -574,10 +588,12 @@ export default function PrayerTimesScreen() {
       marginBottom: 15,
     },
     quickActionCard: {
-      width: (width - 60) / 2,
+      // 4-column layout with equal-width cards
+      width: (width - 40 - 3 * 10) / 4, // 40 padding (20 each side) + 10px gaps
       backgroundColor: colors.card,
       borderRadius: 15,
-      padding: 20,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
       alignItems: 'center',
       marginBottom: 15,
       borderWidth: 0,

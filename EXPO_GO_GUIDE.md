@@ -145,3 +145,4 @@ npx expo start --android
 lsof -ti:8081 | xargs kill -9
 ```
 
+

@@ -75,3 +75,4 @@ npx expo start --android
 - Development build is the recommended solution
 - Or use simulator/emulator for testing
 
+

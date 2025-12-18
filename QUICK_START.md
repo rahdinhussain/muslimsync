@@ -84,3 +84,4 @@
 - Check Node.js version (should be 14+)
 - Update Expo CLI: `npm install -g expo-cli@latest`
 
+

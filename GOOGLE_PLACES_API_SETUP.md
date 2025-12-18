@@ -76,3 +76,4 @@ If you encounter issues, check:
 2. The app's console logs for detailed error messages
 3. Contact support at contact@muslimsync.com
 
+

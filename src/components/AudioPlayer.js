@@ -81,40 +81,29 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
     } catch (error) {
       console.log('Error checking downloaded audio:', error);
     }
-    
-    // Fallback to API - Use reliable Islamic Network CDN
+
+    // Not downloaded locally – fall back to online sources
     setIsUsingDownloaded(false);
-    
+
     const surahNum = surahNumber.toString().padStart(3, '0');
-    
-    // Map reciter IDs to Islamic Network CDN format
-    // Format: https://cdn.islamic.network/quran/audio-surah/128/ar.{reciter_code}/{surah_number}.mp3
-    const reciterApiMap = {
-      'mishary_rashid_alafasy': 'ar.alafasy',
-      'abdul_basit_murattal': 'ar.abdulbasitmurattal',
-      'abdul_basit_mujawwad': 'ar.abdulbasitmujawwad',
-      'abdullah_basfar': 'ar.abdullahbasfar',
-      'abdurrahmaan_alsudais': 'ar.abdurrahmaansudais',
-      'saad_al_ghamdi': 'ar.saadghamdi',
-      'maher_al_muaiqly': 'ar.mahermuaiqly',
-      'muhammad_ayyoub': 'ar.muhammadayyoub',
-      'abdullah_matroud': 'ar.abdullahmatroud',
-      'ahmed_ibn_ali_al_ajamy': 'ar.ahmedibnaliajamy',
-    };
-    
-    const reciterCode = reciterId ? reciterApiMap[reciterId] : reciterApiMap['mishary_rashid_alafasy'];
-    
-    if (reciterCode) {
-      // Use Islamic Network CDN (more reliable)
-      const apiUrl = `https://cdn.islamic.network/quran/audio-surah/128/${reciterCode}/${surahNumber}.mp3`;
-      console.log('Using API audio:', apiUrl);
-      return apiUrl;
+
+    // If this is the Arabic & English combined recitation, stream from your R2 bucket
+    if (reciterId === 'arabic_english_r2') {
+      const R2_BASE_URL =
+        'https://63b97aa5eed13083f7e69a95427aa14c.r2.cloudflarestorage.com/muslimsync/quran';
+      const r2Url = `${R2_BASE_URL}/${surahNum}.mp3`;
+      console.log('Primary API audio (R2 Arabic & English):', r2Url);
+      return r2Url;
     }
-    
-    // Fallback to default (Mishary Alafasy from server8)
-    const defaultUrl = `https://server8.mp3quran.net/afs/${surahNum}.mp3`;
-    console.log('Using default API audio:', defaultUrl);
-    return defaultUrl;
+
+    // Default Arabic recitation (Mishary) – online sources
+    const cdnUrl = `https://cdn.islamic.network/quran/audio-surah/128/ar.alafasy/${surahNumber}.mp3`;
+    const mp3QuranUrl = `https://server8.mp3quran.net/afs/${surahNum}.mp3`;
+
+    console.log('Primary API audio (Islamic Network):', cdnUrl);
+    console.log('Fallback API audio (MP3Quran):', mp3QuranUrl);
+
+    return cdnUrl;
   };
 
   const playAudio = async () => {
