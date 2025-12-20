@@ -56,30 +56,38 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
   }, [reciterId, surahNumber]);
 
   const getAudioUri = async () => {
-    // First check if audio is downloaded for this reciter
-    try {
-      const downloadedAudio = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO);
-      const downloadedList = downloadedAudio ? JSON.parse(downloadedAudio) : [];
+    // Always check if the specific surah file exists locally first (regardless of AsyncStorage list)
+    if (reciterId) {
+      const audioDir = `${FileSystem.documentDirectory}quran_audio/${reciterId}/`;
+      const fileUri = `${audioDir}${surahNumber}.mp3`;
+      console.log(`Checking for local audio file: ${fileUri}, reciterId: ${reciterId}, surahNumber: ${surahNumber}`);
       
-      if (reciterId && downloadedList.includes(reciterId)) {
-        // Check if the specific surah file exists
-        const fileUri = `${FileSystem.documentDirectory}quran_audio/${reciterId}/${surahNumber}.mp3`;
-        try {
-          const fileInfo = await FileSystem.getInfoAsync(fileUri);
-          
-          if (fileInfo.exists) {
-            console.log('Using downloaded audio:', fileUri);
-            setIsUsingDownloaded(true);
-            return fileUri; // Use downloaded file
-          } else {
-            console.log('Downloaded audio file not found:', fileUri);
+      try {
+        // First check if directory exists
+        const dirInfo = await FileSystem.getInfoAsync(audioDir);
+        if (dirInfo.exists) {
+          // List files in directory for debugging
+          try {
+            const files = await FileSystem.readDirectoryAsync(audioDir);
+            console.log(`Files in directory ${audioDir}:`, files);
+          } catch (listError) {
+            console.log('Could not list directory:', listError);
           }
-        } catch (fileError) {
-          console.log('Error checking file:', fileError);
         }
+        
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        console.log(`File info for ${fileUri}:`, { exists: fileInfo.exists, size: fileInfo.size });
+        
+        if (fileInfo.exists && fileInfo.size > 0) {
+          console.log('✅ Using downloaded audio:', fileUri);
+          setIsUsingDownloaded(true);
+          return fileUri; // Use downloaded file
+        } else {
+          console.log('❌ Downloaded audio file not found or empty:', fileUri, fileInfo);
+        }
+      } catch (fileError) {
+        console.log('❌ Error checking file:', fileError);
       }
-    } catch (error) {
-      console.log('Error checking downloaded audio:', error);
     }
 
     // Not downloaded locally – fall back to online sources
@@ -89,8 +97,7 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
 
     // If this is the Arabic & English combined recitation, stream from your R2 bucket
     if (reciterId === 'arabic_english_r2') {
-      const R2_BASE_URL =
-        'https://63b97aa5eed13083f7e69a95427aa14c.r2.cloudflarestorage.com/muslimsync/quran';
+      const R2_BASE_URL = 'https://cdn.muslimsync.com/quran';
       const r2Url = `${R2_BASE_URL}/${surahNum}.mp3`;
       console.log('Primary API audio (R2 Arabic & English):', r2Url);
       return r2Url;
@@ -127,25 +134,71 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
       }
 
       // Get audio URI (downloaded or API)
-      const audioUri = await getAudioUri();
+      let audioUri = await getAudioUri();
       console.log('Playing audio from:', audioUri);
 
-      // Create a timeout to prevent infinite loading (60 seconds for large audio files)
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Audio loading timeout')), 60000);
-      });
+      // For Arabic & English R2, try custom domain first, fallback to dev URL if it fails
+      let newSound;
+      const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
+      
+      if (reciterId === 'arabic_english_r2' && audioUri.includes('cdn.muslimsync.com')) {
+        try {
+          // Try custom domain first with shorter timeout (15 seconds)
+          const quickTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Audio loading timeout')), 15000);
+          });
 
-      const loadPromise = Audio.Sound.createAsync(
-        { uri: audioUri },
-        { 
-          shouldPlay: true,
-          isLooping: false,
+          const loadPromise = Audio.Sound.createAsync(
+            { uri: audioUri },
+            { 
+              shouldPlay: true,
+              isLooping: false,
+            }
+          );
+
+          newSound = (await Promise.race([loadPromise, quickTimeoutPromise])).sound;
+          console.log('✅ Custom domain worked!');
+        } catch (customDomainError) {
+          console.log('❌ Custom domain failed, trying dev URL fallback:', customDomainError.message);
+          // Fallback to dev URL
+          const surahNum = surahNumber.toString().padStart(3, '0');
+          audioUri = `${R2_DEV_URL}/${surahNum}.mp3`;
+          console.log('Trying fallback URL:', audioUri);
+          
+          // Try again with dev URL
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Audio loading timeout')), 60000);
+          });
+
+          const loadPromise = Audio.Sound.createAsync(
+            { uri: audioUri },
+            { 
+              shouldPlay: true,
+              isLooping: false,
+            }
+          );
+
+          newSound = (await Promise.race([loadPromise, timeoutPromise])).sound;
+          console.log('✅ Dev URL fallback worked!');
         }
-      );
+      } else {
+        // For other reciters, use normal flow
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Audio loading timeout')), 60000);
+        });
 
-      const { sound: newSound } = await Promise.race([loadPromise, timeoutPromise]);
+        const loadPromise = Audio.Sound.createAsync(
+          { uri: audioUri },
+          { 
+            shouldPlay: true,
+            isLooping: false,
+          }
+        );
 
-      console.log('Audio loaded successfully');
+        newSound = (await Promise.race([loadPromise, timeoutPromise])).sound;
+      }
+
+      console.log('Audio loaded successfully from:', audioUri);
       setSound(newSound);
       setIsPlaying(true);
 
@@ -188,7 +241,13 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
       });
     } catch (error) {
       console.error('Error playing audio:', error);
-      setError(`Failed to load audio: ${error.message || 'Unknown error'}`);
+      let errorMessage = `Failed to load audio: ${error.message || 'Unknown error'}`;
+      if (reciterId === 'arabic_english_r2') {
+        if (error.message && (error.message.includes('timeout') || error.message.includes('-1003'))) {
+          errorMessage = 'Cannot reach audio server. Please check your internet connection or download the audio for offline use. If this persists, the custom domain may need time to propagate or there may be a DNS issue.';
+        }
+      }
+      setError(errorMessage);
       setIsPlaying(false);
     } finally {
       setIsLoading(false);

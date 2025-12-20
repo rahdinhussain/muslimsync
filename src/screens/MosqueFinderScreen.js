@@ -41,7 +41,7 @@ export default function MosqueFinderScreen() {
 
         const { data, error } = await supabase
           .from('mosques')
-          .select('id, name, country, state, city, street, zip, latitude, longitude, phone, website')
+          .select('id, name, country, state, city, street, zip, latitude, longitude, phone, website, notice')
           .order('city', { ascending: true })
           .order('name', { ascending: true });
 
@@ -62,6 +62,7 @@ export default function MosqueFinderScreen() {
             longitude: row.longitude,
             phone: row.phone,
             website: row.website,
+            notice: row.notice,
             prayerTimes: null, // daily times now come from separate table
           }));
           setMosques(mapped);

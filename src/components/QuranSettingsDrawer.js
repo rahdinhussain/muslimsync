@@ -840,9 +840,10 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           if (reciterId === 'arabic_english_r2') {
             // Arabic & English combined recitation – download from your R2 bucket
             const surahNum = surah.number.toString().padStart(3, '0');
-            const R2_BASE_URL =
-              'https://63b97aa5eed13083f7e69a95427aa14c.r2.cloudflarestorage.com/muslimsync/quran';
-            audioUrl = `${R2_BASE_URL}/${surahNum}.mp3`;
+            // Try custom domain first, fallback to dev URL if it fails
+            const R2_CUSTOM_URL = 'https://cdn.muslimsync.com/quran';
+            const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
+            audioUrl = `${R2_CUSTOM_URL}/${surahNum}.mp3`;
           } else {
           // Map reciter IDs to Islamic Network CDN format (same as AudioPlayer)
           const reciterApiMap = {
@@ -864,40 +865,130 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           }
           const fileUri = `${audioDir}${surah.number}.mp3`;
           
-          // Check if file already exists
+          // Check if file already exists and has valid size
           const fileInfo = await FileSystem.getInfoAsync(fileUri);
-          if (fileInfo.exists) {
+          if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+            console.log(`Surah ${surah.number} already downloaded (${fileInfo.size} bytes), skipping`);
             successCount++;
             continue;
           }
 
-          // Download audio file with timeout
+          // Download audio file with timeout and fallback for R2
           console.log(`Downloading audio for surah ${surah.number} from: ${audioUrl}`);
           
-          const downloadPromise = FileSystem.downloadAsync(audioUrl, fileUri);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Download timeout')), 60000)
-          );
+          let downloadResult;
+          let downloadedFileInfo;
           
-          const downloadResult = await Promise.race([downloadPromise, timeoutPromise]);
-          
-          // Verify the file was actually downloaded
-          const downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
-          
-          if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
-            console.log(`Successfully downloaded surah ${surah.number} (${downloadedFileInfo.size} bytes)`);
-            successCount++;
-          } else {
-            console.error(`Download failed for surah ${surah.number}: status=${downloadResult.status}, exists=${downloadedFileInfo.exists}, size=${downloadedFileInfo.size}`);
-            // Try to delete the incomplete file
-            try {
-              if (downloadedFileInfo.exists) {
-                await FileSystem.deleteAsync(fileUri, { idempotent: true });
+          try {
+            // For R2, try custom domain first with shorter timeout (15 seconds)
+            if (reciterId === 'arabic_english_r2' && audioUrl.includes('cdn.muslimsync.com')) {
+              const quickTimeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Download timeout')), 15000)
+              );
+              downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), quickTimeoutPromise]);
+              
+              // Verify the file was actually downloaded
+              downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
+              
+              if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
+                console.log(`✅ Successfully downloaded surah ${surah.number} from custom domain (${downloadedFileInfo.size} bytes)`);
+                successCount++;
+                // Continue to next surah
+                if (currentIndex < totalToDownload) {
+                  await new Promise(resolve => setTimeout(resolve, 300));
+                }
+                continue;
               }
-            } catch (deleteError) {
-              console.error('Error deleting incomplete file:', deleteError);
+              
+              // If custom domain failed, try dev URL fallback
+              console.log(`❌ Custom domain download failed for surah ${surah.number}, trying dev URL fallback`);
+              const surahNum = surah.number.toString().padStart(3, '0');
+              const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
+              audioUrl = `${R2_DEV_URL}/${surahNum}.mp3`;
+              console.log(`Trying fallback URL: ${audioUrl}`);
+              
+              // Delete any incomplete file from custom domain attempt
+              try {
+                const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
+                if (existingFileInfo.exists) {
+                  await FileSystem.deleteAsync(fileUri, { idempotent: true });
+                }
+              } catch (deleteError) {
+                // Ignore delete errors
+              }
             }
-            failCount++;
+            
+            // Try download (either first attempt for non-R2, or fallback for R2)
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Download timeout')), 60000)
+            );
+            
+            downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), timeoutPromise]);
+            
+            // Verify the file was actually downloaded
+            downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
+            
+            if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
+              console.log(`Successfully downloaded surah ${surah.number} (${downloadedFileInfo.size} bytes)`);
+              successCount++;
+            } else {
+              console.error(`Download failed for surah ${surah.number}: status=${downloadResult.status}, exists=${downloadedFileInfo.exists}, size=${downloadedFileInfo.size}`);
+              // Try to delete the incomplete file
+              try {
+                if (downloadedFileInfo.exists) {
+                  await FileSystem.deleteAsync(fileUri, { idempotent: true });
+                }
+              } catch (deleteError) {
+                console.error('Error deleting incomplete file:', deleteError);
+              }
+              failCount++;
+            }
+          } catch (downloadError) {
+            // If custom domain failed and we haven't tried fallback yet, try it now
+            if (reciterId === 'arabic_english_r2' && audioUrl.includes('cdn.muslimsync.com') && !audioUrl.includes('r2.dev')) {
+              console.log(`Custom domain download failed for surah ${surah.number}: ${downloadError.message}, trying dev URL fallback`);
+              try {
+                const surahNum = surah.number.toString().padStart(3, '0');
+                const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
+                audioUrl = `${R2_DEV_URL}/${surahNum}.mp3`;
+                
+                // Delete any incomplete file
+                try {
+                  const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
+                  if (existingFileInfo.exists) {
+                    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+                  }
+                } catch (deleteError) {
+                  // Ignore
+                }
+                
+                // Try with dev URL
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Download timeout')), 60000)
+                );
+                downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), timeoutPromise]);
+                downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
+                
+                if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
+                  console.log(`✅ Successfully downloaded surah ${surah.number} from dev URL fallback (${downloadedFileInfo.size} bytes)`);
+                  successCount++;
+                  // Continue to next surah
+                  if (currentIndex < totalToDownload) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                  }
+                  continue;
+                } else {
+                  throw new Error('Fallback download also failed');
+                }
+              } catch (fallbackError) {
+                console.error(`❌ Both custom domain and dev URL failed for surah ${surah.number}:`, fallbackError.message);
+                failCount++;
+              }
+            } else {
+              // For non-R2 or already tried fallback, just count as failure
+              console.error(`Download failed for surah ${surah.number}:`, downloadError.message);
+              failCount++;
+            }
           }
                   
           // Small delay to avoid overwhelming the server

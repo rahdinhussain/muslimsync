@@ -33,9 +33,21 @@ export default function PrayerTimesScreen() {
   const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    loadCityName();
     getLocation();
     loadPrayerMethod();
   }, []);
+
+  const loadCityName = async () => {
+    try {
+      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
+      if (cachedCity) {
+        setCityName(cachedCity);
+      }
+    } catch (error) {
+      console.log('Error loading cached city name:', error);
+    }
+  };
 
   // Animate the glow effect continuously
   useEffect(() => {
@@ -74,6 +86,14 @@ export default function PrayerTimesScreen() {
       fetchHijriDate();
     }
   }, [location, selectedDate, prayerMethod]);
+
+  // Reload city name when screen comes into focus (in case it was updated in settings)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadCityName();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const fetchHijriDate = async () => {
     try {
@@ -118,16 +138,24 @@ export default function PrayerTimesScreen() {
       let locationData = await Location.getCurrentPositionAsync({});
       setLocation(locationData.coords);
       
-      // Get city name from coordinates
-      getCityName(locationData.coords.latitude, locationData.coords.longitude);
+      // Only fetch city name if not already cached (first time)
+      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
+      if (!cachedCity) {
+        getCityName(locationData.coords.latitude, locationData.coords.longitude);
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to get location. Using default location.');
       setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
-      getCityName(40.7128, -74.0060);
+      
+      // Only fetch city name if not already cached (first time)
+      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
+      if (!cachedCity) {
+        getCityName(40.7128, -74.0060);
+      }
     }
   };
 
-  const getCityName = async (latitude, longitude) => {
+  const getCityName = async (latitude, longitude, saveToStorage = true) => {
     try {
       const reverseGeocode = await Location.reverseGeocodeAsync({
         latitude,
@@ -139,10 +167,24 @@ export default function PrayerTimesScreen() {
         // Try to get city, if not available use subAdministrativeArea or administrativeArea
         const city = address.city || address.subAdministrativeArea || address.administrativeArea || 'Unknown';
         setCityName(city);
+        
+        // Save to storage if requested
+        if (saveToStorage) {
+          await AsyncStorage.setItem('@prayer_city_name', city);
+          await AsyncStorage.setItem('@prayer_location_lat', String(latitude));
+          await AsyncStorage.setItem('@prayer_location_lng', String(longitude));
+        }
       }
     } catch (error) {
-      console.log('Error getting city name:', error);
-      setCityName(null);
+      // Silently handle rate limit errors - city name is optional
+      if (error.message && error.message.includes('rate limit')) {
+        // Rate limit exceeded - just don't show city name
+        setCityName(null);
+      } else {
+        // For other errors, log but don't show to user
+        console.log('Error getting city name:', error.message || error);
+        setCityName(null);
+      }
     }
   };
 

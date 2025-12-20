@@ -24,18 +24,24 @@ export default function MenuScreen() {
     },
     {
       id: 2,
+      title: 'Location',
+      icon: 'location',
+      onPress: () => navigation.navigate('Location'),
+    },
+    {
+      id: 3,
       title: 'Prayer Time Calculation',
       icon: 'time',
       onPress: () => navigation.navigate('PrayerTimeCalculation'),
     },
     {
-      id: 3,
+      id: 4,
       title: 'About',
       icon: 'information-circle',
       onPress: () => navigation.navigate('About'),
     },
     {
-      id: 4,
+      id: 5,
       title: 'Help & Support',
       icon: 'help-circle',
       onPress: () => navigation.navigate('HelpSupport'),

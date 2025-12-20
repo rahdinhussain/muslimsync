@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,23 @@ import {
   Linking,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
+import { supabase } from '../lib/supabase';
+import { format, addDays, subDays, isSameDay } from 'date-fns';
 
 export default function MosqueScheduleScreen({ route }) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const { mosque } = route.params || {};
+  const [prayerTimes, setPrayerTimes] = useState(null);
+  const [loadingPrayerTimes, setLoadingPrayerTimes] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [availableDates, setAvailableDates] = useState([]);
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {
@@ -178,12 +185,146 @@ export default function MosqueScheduleScreen({ route }) {
     );
   }
 
-  const prayerNames = {
-    Fajr: { name: 'Fajr', icon: 'sunny', color: '#FFA500' },
-    Dhuhr: { name: 'Dhuhr', icon: 'sunny', color: '#FFD700' },
-    Asr: { name: 'Asr', icon: 'partly-sunny', color: '#FF8C00' },
-    Maghrib: { name: 'Maghrib', icon: 'moon', color: '#FF6347' },
-    Isha: { name: 'Isha', icon: 'moon', color: '#4B0082' },
+  // Prayer name mappings with display order
+  const getPrayerDisplayInfo = (key) => {
+    const prayerMap = {
+      fajr: { name: 'Fajr', icon: 'sunny', color: '#FFA500', order: 1 },
+      sunrise: { name: 'Sunrise', icon: 'sunny-outline', color: '#FFD700', order: 1.5 }, // After Fajr
+      dhuhr: { name: 'Dhuhr', icon: 'sunny', color: '#FFD700', order: 2 },
+      asr: { name: 'Asr', icon: 'partly-sunny', color: '#FF8C00', order: 3 },
+      maghrib: { name: 'Maghrib', icon: 'moon', color: '#FF6347', order: 4 },
+      isha: { name: 'Isha', icon: 'moon', color: '#4B0082', order: 5 },
+    };
+
+    // Handle Jumu'ah prayers (can be jumuah_1, jumuah_2, jumuah_3, etc.)
+    if (key.startsWith('jumuah_')) {
+      const num = key.replace('jumuah_', '');
+      return { 
+        name: `Jumu'ah ${num}`, 
+        icon: 'people', 
+        color: '#4B0082', 
+        order: 10 + parseInt(num, 10) // Put Jumu'ah prayers after standard prayers
+      };
+    }
+
+    return prayerMap[key] || { 
+      name: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '), 
+      icon: 'time-outline', 
+      color: colors.text, 
+      order: 99 
+    };
+  };
+
+  useEffect(() => {
+    if (mosque?.id) {
+      fetchAvailableDates();
+    }
+  }, [mosque?.id]);
+
+  useEffect(() => {
+    if (mosque?.id && availableDates.length > 0 && selectedDate) {
+      fetchPrayerTimes();
+    }
+  }, [selectedDate, mosque?.id, availableDates.length]);
+
+  const fetchAvailableDates = async () => {
+    if (!mosque?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('mosque_prayer_times')
+        .select('date')
+        .eq('mosque_id', mosque.id)
+        .order('date', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const dates = data.map(row => new Date(row.date));
+        setAvailableDates(dates);
+        
+        // Set initial selected date to today if available, otherwise use the first available date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayInAvailable = dates.find(date => isSameDay(date, today));
+        if (!todayInAvailable) {
+          setSelectedDate(dates[0]);
+        } else {
+          setSelectedDate(today);
+        }
+      } else {
+        setAvailableDates([]);
+      }
+    } catch (error) {
+      console.error('Error fetching available dates:', error);
+      setAvailableDates([]);
+    }
+  };
+
+  const fetchPrayerTimes = async () => {
+    if (!mosque?.id) return;
+
+    try {
+      setLoadingPrayerTimes(true);
+      const dateString = format(selectedDate, 'yyyy-MM-dd');
+
+      const { data, error } = await supabase
+        .from('mosque_prayer_times')
+        .select('times')
+        .eq('mosque_id', mosque.id)
+        .eq('date', dateString)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No prayer times found for selected date
+          setPrayerTimes(null);
+        } else {
+          console.error('Error fetching prayer times:', error);
+          setPrayerTimes(null);
+        }
+      } else {
+        // data.times is the JSONB column containing all prayer times
+        setPrayerTimes(data.times || null);
+      }
+    } catch (error) {
+      console.error('Unexpected error fetching prayer times:', error);
+      setPrayerTimes(null);
+    } finally {
+      setLoadingPrayerTimes(false);
+    }
+  };
+
+  const hasPreviousDate = () => {
+    if (availableDates.length === 0) return false;
+    const currentIndex = availableDates.findIndex(date => 
+      isSameDay(date, selectedDate)
+    );
+    return currentIndex > 0;
+  };
+
+  const hasNextDate = () => {
+    if (availableDates.length === 0) return false;
+    const currentIndex = availableDates.findIndex(date => 
+      isSameDay(date, selectedDate)
+    );
+    return currentIndex >= 0 && currentIndex < availableDates.length - 1;
+  };
+
+  const goToPreviousDate = () => {
+    const currentIndex = availableDates.findIndex(date => 
+      isSameDay(date, selectedDate)
+    );
+    if (currentIndex > 0) {
+      setSelectedDate(availableDates[currentIndex - 1]);
+    }
+  };
+
+  const goToNextDate = () => {
+    const currentIndex = availableDates.findIndex(date => 
+      isSameDay(date, selectedDate)
+    );
+    if (currentIndex >= 0 && currentIndex < availableDates.length - 1) {
+      setSelectedDate(availableDates[currentIndex + 1]);
+    }
   };
 
   const handleCall = async () => {
@@ -326,23 +467,179 @@ export default function MosqueScheduleScreen({ route }) {
       </View>
 
       <View style={styles.scheduleContainer}>
-        <Text style={dynamicStyles.sectionTitle}>Prayer Schedule</Text>
-        <Text style={dynamicStyles.sectionSubtitle}>Today's Prayer Times</Text>
+        <View style={styles.scheduleHeader}>
+          <Text style={dynamicStyles.sectionTitle}>Prayer Schedule</Text>
+          {availableDates.length > 1 && (
+            <View style={styles.dateNavigation}>
+              <TouchableOpacity
+                onPress={goToPreviousDate}
+                disabled={!hasPreviousDate()}
+                style={[
+                  styles.dateNavButton,
+                  { backgroundColor: colors.cardSecondary },
+                  !hasPreviousDate() && styles.dateNavButtonDisabled
+                ]}
+              >
+                <Ionicons 
+                  name="chevron-back" 
+                  size={20} 
+                  color={hasPreviousDate() ? colors.text : colors.textSecondary} 
+                />
+              </TouchableOpacity>
+              <Text style={[styles.dateText, { color: colors.text }]}>
+                {selectedDate ? format(selectedDate, 'EEEE, MMMM d, yyyy') : 'Loading...'}
+              </Text>
+              <TouchableOpacity
+                onPress={goToNextDate}
+                disabled={!hasNextDate()}
+                style={[
+                  styles.dateNavButton,
+                  { backgroundColor: colors.cardSecondary },
+                  !hasNextDate() && styles.dateNavButtonDisabled
+                ]}
+              >
+                <Ionicons 
+                  name="chevron-forward" 
+                  size={20} 
+                  color={hasNextDate() ? colors.text : colors.textSecondary} 
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+          {availableDates.length === 1 && selectedDate && (
+            <Text style={dynamicStyles.sectionSubtitle}>
+              {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+            </Text>
+          )}
+          {availableDates.length === 0 && (
+            <Text style={dynamicStyles.sectionSubtitle}>No schedules available</Text>
+          )}
+        </View>
 
-        {Object.entries(prayerNames).map(([key, prayer]) => (
+        {loadingPrayerTimes ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.text} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+              Loading prayer times...
+            </Text>
+          </View>
+        ) : !prayerTimes ? (
+          <View style={styles.noDataContainer}>
+            <Ionicons name="time-outline" size={48} color={colors.textSecondary} />
+            <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
+              Prayer times not available for today
+            </Text>
+          </View>
+        ) : (
+          <>
+            {/* Build prayer cards array */}
+            {(() => {
+              const prayerCards = [];
+
+              // Handle standard prayers (fajr, dhuhr, asr, maghrib, isha) - objects with athan/iqama (lowercase)
+              ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'].forEach((key) => {
+                if (prayerTimes[key] && typeof prayerTimes[key] === 'object' && !Array.isArray(prayerTimes[key])) {
+                  const value = prayerTimes[key];
+                  // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
+                  const athan = (value.athan || value.AThan) ? String(value.athan || value.AThan).trim() : '';
+                  const iqama = (value.iqama || value.Iqama) ? String(value.iqama || value.Iqama).trim() : '';
+                  if (athan || iqama) {
+                    const prayerInfo = getPrayerDisplayInfo(key);
+                    prayerCards.push({ 
+                      key, 
+                      athan, 
+                      iqama, 
+                      hasBoth: !!(athan && iqama),
+                      ...prayerInfo 
+                    });
+                  }
+                }
+              });
+
+              // Handle sunrise - single string value (after Fajr)
+              if (prayerTimes.sunrise && (typeof prayerTimes.sunrise === 'string' || typeof prayerTimes.sunrise === 'number')) {
+                const sunriseValue = String(prayerTimes.sunrise).trim();
+                if (sunriseValue !== '') {
+                  const prayerInfo = getPrayerDisplayInfo('sunrise');
+                  prayerCards.push({ key: 'sunrise', displayTime: sunriseValue, ...prayerInfo });
+                }
+              }
+
+              // Handle jummah (note: key is "jummah" not "jumuah") - array of objects, create a card for each
+              const jummahKey = prayerTimes.jummah ? 'jummah' : (prayerTimes.jumuah ? 'jumuah' : null);
+              if (jummahKey && Array.isArray(prayerTimes[jummahKey])) {
+                const jummahArray = prayerTimes[jummahKey];
+                jummahArray.forEach((jummahItem, index) => {
+                  if (jummahItem && typeof jummahItem === 'object') {
+                    // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
+                    const athan = (jummahItem.athan || jummahItem.AThan) ? String(jummahItem.athan || jummahItem.AThan).trim() : '';
+                    const iqama = (jummahItem.iqama || jummahItem.Iqama) ? String(jummahItem.iqama || jummahItem.Iqama).trim() : '';
+                    if (athan || iqama) {
+                      // Only show number if there's more than one Jumu'ah
+                      const name = jummahArray.length > 1 ? `Jumu'ah ${index + 1}` : 'Jumu\'ah';
+                      prayerCards.push({
+                        key: `jumuah_${index}`,
+                        athan,
+                        iqama,
+                        hasBoth: !!(athan && iqama),
+                        name,
+                        icon: 'people',
+                        color: '#4B0082',
+                        order: 10 + index,
+                      });
+                    }
+                  }
+                });
+              }
+
+              // Sort by order and render
+              return prayerCards
+                .sort((a, b) => a.order - b.order)
+                .map(({ key, displayTime, athan, iqama, hasBoth, name, icon, color }) => (
           <View key={key} style={dynamicStyles.prayerCard}>
             <View style={dynamicStyles.prayerIconContainer}>
-              <Ionicons name={prayer.icon} size={28} color={prayer.color} />
+                      <Ionicons name={icon} size={28} color={color} />
             </View>
             <View style={styles.prayerInfo}>
-              <Text style={dynamicStyles.prayerName}>{prayer.name}</Text>
+                      <Text style={dynamicStyles.prayerName}>{name}</Text>
+                      {hasBoth ? (
+                        <View style={styles.prayerTimeContainer}>
+                          <View style={styles.timeRow}>
+                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>Athan</Text>
+                            <Text style={dynamicStyles.prayerTime}>{athan}</Text>
+                          </View>
+                          <View style={styles.timeRow}>
+                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>Iqama</Text>
+                            <Text style={dynamicStyles.prayerTime}>{iqama}</Text>
+                          </View>
+                        </View>
+                      ) : (
               <Text style={dynamicStyles.prayerTime}>
-                {mosque.prayerTimes?.[key] || '--:--'}
+                          {displayTime || athan || iqama}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                ));
+            })()}
+          </>
+        )}
+      </View>
+
+      {/* Notice Section */}
+      {mosque.notice && String(mosque.notice).trim() !== '' && (
+        <View style={styles.noticeContainer}>
+          <View style={[dynamicStyles.infoCard, { backgroundColor: colors.cardSecondary || colors.card }]}>
+            <Ionicons name="megaphone-outline" size={24} color={colors.text} />
+            <View style={styles.infoContent}>
+              <Text style={dynamicStyles.infoTitle}>Notice</Text>
+              <Text style={dynamicStyles.infoText}>
+                {String(mosque.notice).trim()}
               </Text>
             </View>
           </View>
-        ))}
       </View>
+      )}
 
       <View style={styles.infoContainer}>
         <View style={dynamicStyles.infoCard}>
@@ -372,6 +669,32 @@ const styles = StyleSheet.create({
   scheduleContainer: {
     padding: 20,
   },
+  scheduleHeader: {
+    marginBottom: 15,
+  },
+  dateNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 15,
+  },
+  dateNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateNavButtonDisabled: {
+    opacity: 0.5,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    minWidth: 200,
+    textAlign: 'center',
+  },
   prayerInfo: {
     flex: 1,
     flexDirection: 'row',
@@ -387,6 +710,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 4,
   },
+  noticeContainer: {
+    padding: 20,
+    paddingTop: 0,
+  },
   infoContainer: {
     padding: 20,
     paddingTop: 0,
@@ -394,6 +721,39 @@ const styles = StyleSheet.create({
   infoContent: {
     flex: 1,
     marginLeft: 15,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 15,
+    fontSize: 16,
+  },
+  noDataContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noDataText: {
+    marginTop: 15,
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  prayerTimeContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  timeLabel: {
+    fontSize: 12,
+    marginRight: 8,
+    fontWeight: '500',
   },
 });
 

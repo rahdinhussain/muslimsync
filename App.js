@@ -21,6 +21,7 @@ import ThemeScreen from './src/screens/ThemeScreen';
 import PrayerTimeCalculationScreen from './src/screens/PrayerTimeCalculationScreen';
 import HelpSupportScreen from './src/screens/HelpSupportScreen';
 import QiblaScreen from './src/screens/QiblaScreen';
+import LocationSettingsScreen from './src/screens/LocationSettingsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -77,6 +78,10 @@ function SettingsStack() {
       <Stack.Screen 
         name="Theme" 
         component={ThemeScreen}
+      />
+      <Stack.Screen 
+        name="Location" 
+        component={LocationSettingsScreen}
       />
       <Stack.Screen 
         name="PrayerTimeCalculation" 

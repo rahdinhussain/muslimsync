@@ -14,29 +14,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  fetchDuaCategories,
+  fetchDuasByCategory,
+  fetchDuaCountsByCategory,
+  saveDownloadedDua,
+  isDuaTextDownloaded,
+  saveDownloadedDuaAudio,
+  isDuaAudioDownloaded,
+  getDownloadedDuaText,
+  getLocalAudioPath,
+  localAudioFileExists,
+  getDownloadedDuaAudioList,
+} from '../utils/duaStorage';
 
-const STORAGE_KEY = '@dua_downloaded_audio';
 const AUDIO_DIR = `${FileSystem.documentDirectory}dua_audio/`;
 const { width } = Dimensions.get('window');
 const CARD_MARGIN = 10;
 const CARD_WIDTH = (width - 40 - CARD_MARGIN) / 2; // 40 for container padding, CARD_MARGIN for gap between cards
-
-// Function to fetch duas from API (for future use)
-const fetchDuasFromAPI = async () => {
-  try {
-    // Example API endpoints (replace with actual API URLs):
-    // const response = await fetch('https://api.example.com/duas');
-    // const data = await response.json();
-    // return data;
-    
-    // For now, return null to use hard-coded data
-    return null;
-  } catch (error) {
-    console.error('Error fetching duas from API:', error);
-    return null;
-  }
-};
 
 const DUA_CATEGORIES = [
   {
@@ -317,16 +312,33 @@ export default function DuaScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [downloadedDuas, setDownloadedDuas] = useState([]);
+  const [downloadedDuaTexts, setDownloadedDuaTexts] = useState(new Set());
   const [downloadingDua, setDownloadingDua] = useState(null);
+  const [downloadingDuaText, setDownloadingDuaText] = useState(null);
+  
+  // Database state
+  const [dbCategories, setDbCategories] = useState([]);
+  const [dbDuas, setDbDuas] = useState({}); // categoryId -> duas array
+  const [duaCounts, setDuaCounts] = useState({}); // categoryId -> count
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingDuas, setLoadingDuas] = useState(false);
+  const [mergedCategories, setMergedCategories] = useState([]);
 
   useEffect(() => {
     loadDownloadedDuas();
+    loadDownloadedDuaTexts();
+    fetchCategories();
     return () => {
       if (sound) {
         sound.unloadAsync().catch(() => {});
       }
     };
   }, []);
+
+  useEffect(() => {
+    // Merge hardcoded and DB categories
+    mergeCategories();
+  }, [dbCategories, duaCounts]);
 
   useEffect(() => {
     // Stop audio when dua changes
@@ -337,41 +349,200 @@ export default function DuaScreen() {
     }
   }, [selectedDua?.id]);
 
+  // Check text download status when dua is selected
+  useEffect(() => {
+    const checkTextDownloadStatus = async () => {
+      if (selectedDua?.id) {
+        const duaIdString = String(selectedDua.id);
+        const isTextDownloaded = await isDuaTextDownloaded(duaIdString);
+        setDownloadedDuaTexts(prev => {
+          const newSet = new Set(prev);
+          if (isTextDownloaded) {
+            newSet.add(duaIdString);
+          } else {
+            newSet.delete(duaIdString);
+          }
+          return newSet;
+        });
+      }
+    };
+    checkTextDownloadStatus();
+  }, [selectedDua?.id]);
+
   const loadDownloadedDuas = async () => {
     try {
-      const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setDownloadedDuas(JSON.parse(saved));
-      }
+      const list = await getDownloadedDuaAudioList();
+      setDownloadedDuas(list);
     } catch (error) {
       console.log('Error loading downloaded duas:', error);
     }
   };
 
-  const isDuaDownloaded = (duaId) => {
-    return downloadedDuas.includes(duaId);
+  const loadDownloadedDuaTexts = async () => {
+    try {
+      // Check all downloaded audio duas to see if text is also downloaded
+      const audioList = await getDownloadedDuaAudioList();
+      const textSet = new Set();
+      for (const duaId of audioList) {
+        const isTextDownloaded = await isDuaTextDownloaded(duaId);
+        if (isTextDownloaded) {
+          textSet.add(duaId);
+        }
+      }
+      setDownloadedDuaTexts(textSet);
+    } catch (error) {
+      console.log('Error loading downloaded dua texts:', error);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      setLoadingCategories(true);
+      const [categories, counts] = await Promise.all([
+        fetchDuaCategories(),
+        fetchDuaCountsByCategory(),
+      ]);
+      setDbCategories(categories);
+      setDuaCounts(counts);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  const mergeCategories = () => {
+    // Start with hardcoded categories, but map them to use DB category data when available
+    const merged = DUA_CATEGORIES.map((hardcodedCat) => {
+      // Find matching DB category by slug (hardcoded id matches slug)
+      const dbCat = dbCategories.find(db => db.slug === hardcodedCat.id);
+      
+      if (dbCat) {
+        // Get count for this category
+        const count = duaCounts[dbCat.id] || 0;
+        
+        // Use DB category data but keep hardcoded ID for reference
+        return {
+          id: hardcodedCat.id, // Keep hardcoded ID for UI consistency
+          title: dbCat.name || hardcodedCat.title,
+          icon: dbCat.icon || hardcodedCat.icon,
+          duas: [], // Will be fetched from DB when clicked
+          dbId: dbCat.id, // Store DB UUID for queries
+          slug: dbCat.slug,
+          duaCount: count, // Store count for display
+        };
+      }
+      
+      // No DB match found, use hardcoded but mark for DB fetch (if it exists in DB later)
+      return {
+        ...hardcodedCat,
+        duas: [], // Clear hardcoded duas, will fetch from DB
+        dbId: null,
+        duaCount: 0,
+      };
+    });
+    
+    // Add any new DB categories that don't match hardcoded ones
+    dbCategories.forEach((dbCat) => {
+      const existsInHardcoded = DUA_CATEGORIES.some(hc => hc.id === dbCat.slug);
+      if (!existsInHardcoded) {
+        const count = duaCounts[dbCat.id] || 0;
+        merged.push({
+          id: dbCat.slug || dbCat.id,
+          title: dbCat.name,
+          icon: dbCat.icon || 'book',
+          duas: [],
+          isFromDb: true,
+          dbId: dbCat.id,
+          slug: dbCat.slug,
+          duaCount: count,
+        });
+      }
+    });
+    
+    setMergedCategories(merged);
+  };
+
+  const handleCategorySelect = async (category) => {
+    setSelectedCategory(category);
+    
+    // Always try to fetch duas from database
+    // First try to find the DB category ID
+    let categoryId = category.dbId;
+    
+    // If no dbId, try to find it by matching slug with DB categories
+    if (!categoryId) {
+      const dbCat = dbCategories.find(db => db.slug === category.id);
+      if (dbCat) {
+        categoryId = dbCat.id;
+        // Update category with dbId for future reference
+        category.dbId = categoryId;
+      }
+    }
+    
+    // Fetch duas from database if we have a category ID
+    if (categoryId) {
+      await fetchCategoryDuas(categoryId, category);
+    } else {
+      // No DB category found, show empty state
+      setSelectedCategory({
+        ...category,
+        duas: [],
+      });
+      setLoadingDuas(false);
+    }
+  };
+
+  const fetchCategoryDuas = async (categoryId, category) => {
+    try {
+      setLoadingDuas(true);
+      const duas = await fetchDuasByCategory(categoryId);
+      
+      // Update category with fetched duas
+      const updatedCategory = {
+        ...category,
+        duas: duas,
+      };
+      setSelectedCategory(updatedCategory);
+      
+      // Store in cache
+      setDbDuas(prev => ({
+        ...prev,
+        [categoryId]: duas,
+      }));
+    } catch (error) {
+      console.error('Error fetching duas:', error);
+      Alert.alert('Error', 'Failed to load duas. Please try again.');
+      // Set empty duas array on error
+      setSelectedCategory({
+        ...category,
+        duas: [],
+      });
+    } finally {
+      setLoadingDuas(false);
+    }
+  };
+
+  const isDuaDownloaded = async (duaId) => {
+    return await isDuaAudioDownloaded(duaId);
   };
 
   const getAudioUri = async (dua) => {
     if (!dua.audioUrl) {
-      Alert.alert('No Audio', 'Audio is not available for this dua.');
       return null;
     }
 
-    // Check if downloaded
-    if (isDuaDownloaded(dua.id)) {
-      const fileUri = `${AUDIO_DIR}${dua.id}.mp3`;
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        if (fileInfo.exists) {
-          return fileUri;
-        }
-      } catch (error) {
-        console.log('Error checking downloaded file:', error);
-      }
+    const duaIdString = String(dua.id);
+    
+    // Check if local file exists first
+    const fileExists = await localAudioFileExists(duaIdString);
+    if (fileExists) {
+      const fileUri = getLocalAudioPath(duaIdString);
+      console.log('Using local audio file:', fileUri);
+      return fileUri;
     }
 
-    // Return API URL
+    // Return R2 URL (will use fallback in playback if needed)
     return dua.audioUrl;
   };
 
@@ -385,12 +556,62 @@ export default function DuaScreen() {
         return;
       }
 
+      if (!dua.audioUrl) {
+        Alert.alert('No Audio', 'Audio is not available for this dua.');
+        return;
+      }
+
       setIsLoading(true);
-      const audioUri = await getAudioUri(dua);
+      let audioUri = await getAudioUri(dua);
       
       if (!audioUri) {
         setIsLoading(false);
         return;
+      }
+
+      // If using R2 URL, implement fallback mechanism
+      let newSound;
+      if (!audioUri.startsWith('file://') && dua.audioUrlFallback) {
+        // Remote URL with fallback available
+        try {
+          // Try primary URL first with shorter timeout (15 seconds)
+          const quickTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Audio loading timeout')), 15000);
+          });
+
+          const loadPromise = Audio.Sound.createAsync(
+            { uri: audioUri },
+            { shouldPlay: true }
+          );
+
+          newSound = (await Promise.race([loadPromise, quickTimeoutPromise])).sound;
+          console.log('✅ Primary URL worked!');
+        } catch (primaryError) {
+          console.log('❌ Primary URL failed, trying fallback URL:', primaryError.message);
+          // Fallback to fallback URL
+          audioUri = dua.audioUrlFallback;
+          console.log('Trying fallback URL:', audioUri);
+          
+          // Try again with fallback URL
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Audio loading timeout')), 60000);
+          });
+
+          const loadPromise = Audio.Sound.createAsync(
+            { uri: audioUri },
+            { shouldPlay: true }
+          );
+
+          newSound = (await Promise.race([loadPromise, timeoutPromise])).sound;
+          console.log('✅ Fallback URL worked!');
+        }
+      } else {
+        // Local file or no fallback - direct load
+        const { sound: createdSound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { shouldPlay: true }
+        );
+        newSound = createdSound;
       }
 
       await Audio.setAudioModeAsync({
@@ -400,11 +621,6 @@ export default function DuaScreen() {
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { shouldPlay: true }
-      );
 
       newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.didJustFinish) {
@@ -430,7 +646,9 @@ export default function DuaScreen() {
       return;
     }
 
-    if (isDuaDownloaded(dua.id)) {
+    const duaIdString = String(dua.id);
+    const isDownloaded = await isDuaAudioDownloaded(duaIdString);
+    if (isDownloaded) {
       Alert.alert('Already Downloaded', 'This dua audio is already downloaded.');
       return;
     }
@@ -444,22 +662,112 @@ export default function DuaScreen() {
         await FileSystem.makeDirectoryAsync(AUDIO_DIR, { intermediates: true });
       }
 
-      const fileUri = `${AUDIO_DIR}${dua.id}.mp3`;
-      const downloadResult = await FileSystem.downloadAsync(dua.audioUrl, fileUri);
+      const fileUri = getLocalAudioPath(duaIdString);
+      let audioUrl = dua.audioUrl;
+      let downloadResult;
 
-      if (downloadResult.status === 200) {
-        const updated = [...downloadedDuas, dua.id];
-        setDownloadedDuas(updated);
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        Alert.alert('Success', 'Dua audio downloaded successfully!');
+      // Try primary URL first with fallback if available
+      if (dua.audioUrlFallback) {
+        try {
+          // Try primary URL first with shorter timeout (15 seconds)
+          const quickTimeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Download timeout')), 15000)
+          );
+          downloadResult = await Promise.race([
+            FileSystem.downloadAsync(audioUrl, fileUri),
+            quickTimeoutPromise
+          ]);
+          console.log('✅ Downloaded from primary URL');
+        } catch (primaryError) {
+          console.log('❌ Primary URL download failed, trying fallback URL');
+          // Fallback to fallback URL
+          audioUrl = dua.audioUrlFallback;
+          console.log('Trying fallback URL:', audioUrl);
+          
+          // Delete any incomplete file
+          try {
+            const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
+            if (existingFileInfo.exists) {
+              await FileSystem.deleteAsync(fileUri, { idempotent: true });
+            }
+          } catch (deleteError) {
+            // Ignore
+          }
+          
+          // Try with fallback URL
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Download timeout')), 60000)
+          );
+          downloadResult = await Promise.race([
+            FileSystem.downloadAsync(audioUrl, fileUri),
+            timeoutPromise
+          ]);
+          console.log('✅ Downloaded from fallback URL');
+        }
       } else {
-        throw new Error('Download failed');
+        // Direct download for URLs without fallback
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Download timeout')), 60000)
+        );
+        downloadResult = await Promise.race([
+          FileSystem.downloadAsync(audioUrl, fileUri),
+          timeoutPromise
+        ]);
+      }
+
+      // Verify the file was actually downloaded
+      const downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
+      
+      if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
+        // Mark audio as downloaded
+        await saveDownloadedDuaAudio(duaIdString);
+        await loadDownloadedDuas();
+        
+        // Automatically download text as well
+        await downloadDuaText(dua, true); // true = silent (no alert)
+        
+        Alert.alert('Success', 'Dua audio and text downloaded successfully!');
+      } else {
+        throw new Error('Download failed - file not saved properly');
       }
     } catch (error) {
       console.error('Error downloading audio:', error);
       Alert.alert('Error', 'Failed to download audio. Please check your internet connection.');
     } finally {
       setDownloadingDua(null);
+    }
+  };
+
+  const downloadDuaText = async (dua, silent = false) => {
+    try {
+      setDownloadingDuaText(dua.id);
+      const duaIdString = String(dua.id);
+      
+      // Save dua text data
+      const duaData = {
+        id: duaIdString,
+        title: dua.title,
+        arabic: dua.arabic,
+        transliteration: dua.transliteration || '',
+        translation: dua.translation || '',
+        reference: dua.reference || '',
+      };
+      
+      await saveDownloadedDua(duaIdString, duaData);
+      
+      // Update state
+      setDownloadedDuaTexts(prev => new Set([...prev, duaIdString]));
+      
+      if (!silent) {
+        Alert.alert('Success', 'Dua text downloaded successfully!');
+      }
+    } catch (error) {
+      console.error('Error downloading dua text:', error);
+      if (!silent) {
+        Alert.alert('Error', 'Failed to download dua text.');
+      }
+    } finally {
+      setDownloadingDuaText(null);
     }
   };
 
@@ -686,13 +994,13 @@ export default function DuaScreen() {
                 <TouchableOpacity
                   style={[styles.audioButton, styles.audioButtonRight, { backgroundColor: colors.cardSecondary }]}
                   onPress={() => downloadAudio(selectedDua)}
-                  disabled={downloadingDua === selectedDua.id || !selectedDua.audioUrl || isDuaDownloaded(selectedDua.id)}
+                  disabled={downloadingDua === selectedDua.id || !selectedDua.audioUrl || downloadedDuas.includes(String(selectedDua.id))}
                 >
                   {downloadingDua === selectedDua.id ? (
                     <ActivityIndicator size="small" color={colors.text} />
                   ) : (
                     <Ionicons 
-                      name={isDuaDownloaded(selectedDua.id) ? "checkmark-circle" : "download-outline"} 
+                      name={downloadedDuas.includes(String(selectedDua.id)) ? "checkmark-circle" : "download-outline"} 
                       size={20} 
                       color={colors.text} 
                     />
@@ -700,9 +1008,34 @@ export default function DuaScreen() {
                   <Text style={[styles.audioButtonText, { color: colors.text, marginLeft: 8 }]}>
                     {downloadingDua === selectedDua.id 
                       ? 'Downloading...' 
-                      : isDuaDownloaded(selectedDua.id) 
-                        ? 'Downloaded' 
-                        : 'Download'}
+                      : downloadedDuas.includes(String(selectedDua.id)) 
+                        ? 'Audio Downloaded' 
+                        : 'Download Audio'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.audioControls, { marginTop: 10 }]}>
+                <TouchableOpacity
+                  style={[styles.audioButton, { backgroundColor: colors.cardSecondary, flex: 1 }]}
+                  onPress={() => downloadDuaText(selectedDua)}
+                  disabled={downloadingDuaText === selectedDua.id || downloadedDuaTexts.has(String(selectedDua.id))}
+                >
+                  {downloadingDuaText === selectedDua.id ? (
+                    <ActivityIndicator size="small" color={colors.text} />
+                  ) : (
+                    <Ionicons 
+                      name={downloadedDuaTexts.has(String(selectedDua.id)) ? "checkmark-circle" : "document-text-outline"} 
+                      size={20} 
+                      color={colors.text} 
+                    />
+                  )}
+                  <Text style={[styles.audioButtonText, { color: colors.text, marginLeft: 8 }]}>
+                    {downloadingDuaText === selectedDua.id 
+                      ? 'Downloading...' 
+                      : downloadedDuaTexts.has(String(selectedDua.id)) 
+                        ? 'Text Downloaded' 
+                        : 'Download Text'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -727,17 +1060,31 @@ export default function DuaScreen() {
             <Text style={dynamicStyles.categoryTitle}>{selectedCategory.title}</Text>
           </View>
           <ScrollView style={styles.duaList}>
-            {selectedCategory.duas.map((dua) => (
-              <TouchableOpacity
-                key={dua.id}
-                style={dynamicStyles.duaCard}
-                onPress={() => setSelectedDua(dua)}
-              >
-                <Text style={dynamicStyles.duaTitle}>{dua.title}</Text>
-                <Text style={dynamicStyles.duaArabic}>{dua.arabic}</Text>
-                <Text style={dynamicStyles.duaTransliteration}>{dua.transliteration}</Text>
-              </TouchableOpacity>
-            ))}
+            {loadingDuas ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.text} />
+                <Text style={{ marginTop: 10, color: colors.textSecondary }}>Loading duas...</Text>
+              </View>
+            ) : selectedCategory.duas && selectedCategory.duas.length > 0 ? (
+              selectedCategory.duas.map((dua) => (
+                <TouchableOpacity
+                  key={dua.id}
+                  style={dynamicStyles.duaCard}
+                  onPress={() => setSelectedDua(dua)}
+                >
+                  <Text style={dynamicStyles.duaTitle}>{dua.title}</Text>
+                  <Text style={dynamicStyles.duaArabic}>{dua.arabic}</Text>
+                  <Text style={dynamicStyles.duaTransliteration}>{dua.transliteration}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Ionicons name="document-text-outline" size={48} color={colors.textSecondary} />
+                <Text style={{ marginTop: 10, color: colors.textSecondary, textAlign: 'center' }}>
+                  No duas found in this category
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </View>
       </SafeAreaView>
@@ -755,18 +1102,24 @@ export default function DuaScreen() {
         </View>
 
         <View style={styles.categoriesContainer}>
-          {DUA_CATEGORIES.map((category) => (
+          {loadingCategories && mergedCategories.length === 0 && (
+            <View style={{ width: '100%', padding: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={colors.text} />
+              <Text style={{ marginTop: 10, color: colors.textSecondary }}>Loading categories...</Text>
+            </View>
+          )}
+          {mergedCategories.map((category) => (
             <TouchableOpacity
               key={category.id}
               style={[dynamicStyles.categoryCard, { marginBottom: 15 }]}
-              onPress={() => setSelectedCategory(category)}
+              onPress={() => handleCategorySelect(category)}
             >
               <View style={dynamicStyles.categoryIconContainer}>
                 <Ionicons name={category.icon} size={32} color={colors.text} />
               </View>
               <Text style={dynamicStyles.categoryTitle}>{category.title}</Text>
               <Text style={dynamicStyles.categoryCount}>
-                {category.duas.length} Duas
+                {category.duaCount !== undefined ? category.duaCount : (category.duas ? category.duas.length : '...')} Duas
               </Text>
             </TouchableOpacity>
           ))}
