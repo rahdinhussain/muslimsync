@@ -8,3 +8,5 @@ ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;
 -- Create index on slug if it doesn't exist
 CREATE INDEX IF NOT EXISTS idx_dua_categories_slug ON dua_categories(slug);
 
+
+

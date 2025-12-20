@@ -105,3 +105,5 @@ INSERT INTO duas (id, category_id, name, arabic_text, transliteration, translati
   ('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20', 'Dua for Right Path', 'اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ', 'Ihdinas-siratal-mustaqim', 'Guide us to the straight path', 'Surah Al-Fatiha 1:6', NULL, NULL)
 ON CONFLICT (id) DO NOTHING;
 
+
+

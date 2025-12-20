@@ -222,15 +222,21 @@ export default function MosqueScheduleScreen({ route }) {
   }, [mosque?.id]);
 
   useEffect(() => {
-    if (mosque?.id && availableDates.length > 0 && selectedDate) {
+    // Always fetch prayer times for the selected date (it may not exist in availableDates)
+    if (mosque?.id && selectedDate) {
       fetchPrayerTimes();
     }
-  }, [selectedDate, mosque?.id, availableDates.length]);
+  }, [selectedDate, mosque?.id]);
 
   const fetchAvailableDates = async () => {
     if (!mosque?.id) return;
 
     try {
+      // Always set selected date to today first
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      setSelectedDate(today);
+
       const { data, error } = await supabase
         .from('mosque_prayer_times')
         .select('date')
@@ -240,16 +246,6 @@ export default function MosqueScheduleScreen({ route }) {
       if (!error && data && data.length > 0) {
         const dates = data.map(row => new Date(row.date));
         setAvailableDates(dates);
-        
-        // Set initial selected date to today if available, otherwise use the first available date
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayInAvailable = dates.find(date => isSameDay(date, today));
-        if (!todayInAvailable) {
-          setSelectedDate(dates[0]);
-        } else {
-          setSelectedDate(today);
-        }
       } else {
         setAvailableDates([]);
       }
@@ -294,37 +290,33 @@ export default function MosqueScheduleScreen({ route }) {
   };
 
   const hasPreviousDate = () => {
-    if (availableDates.length === 0) return false;
-    const currentIndex = availableDates.findIndex(date => 
-      isSameDay(date, selectedDate)
-    );
-    return currentIndex > 0;
+    // Always allow going to previous day (no restrictions)
+    return true;
   };
 
   const hasNextDate = () => {
-    if (availableDates.length === 0) return false;
-    const currentIndex = availableDates.findIndex(date => 
-      isSameDay(date, selectedDate)
-    );
-    return currentIndex >= 0 && currentIndex < availableDates.length - 1;
+    // Always allow going to next day (no restrictions)
+    return true;
   };
 
   const goToPreviousDate = () => {
-    const currentIndex = availableDates.findIndex(date => 
-      isSameDay(date, selectedDate)
-    );
-    if (currentIndex > 0) {
-      setSelectedDate(availableDates[currentIndex - 1]);
-    }
+    // Navigate to previous calendar day
+    const previousDay = subDays(selectedDate, 1);
+    setSelectedDate(previousDay);
   };
 
   const goToNextDate = () => {
-    const currentIndex = availableDates.findIndex(date => 
-      isSameDay(date, selectedDate)
-    );
-    if (currentIndex >= 0 && currentIndex < availableDates.length - 1) {
-      setSelectedDate(availableDates[currentIndex + 1]);
-    }
+    // Navigate to next calendar day
+    const nextDay = addDays(selectedDate, 1);
+    setSelectedDate(nextDay);
+  };
+
+  // Check if today is available
+  const isTodayAvailable = () => {
+    if (availableDates.length === 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return availableDates.some(date => isSameDay(date, today));
   };
 
   const handleCall = async () => {
@@ -468,8 +460,8 @@ export default function MosqueScheduleScreen({ route }) {
 
       <View style={styles.scheduleContainer}>
         <View style={styles.scheduleHeader}>
-          <Text style={dynamicStyles.sectionTitle}>Prayer Schedule</Text>
-          {availableDates.length > 1 && (
+        <Text style={dynamicStyles.sectionTitle}>Prayer Schedule</Text>
+          {selectedDate && (
             <View style={styles.dateNavigation}>
               <TouchableOpacity
                 onPress={goToPreviousDate}
@@ -487,7 +479,7 @@ export default function MosqueScheduleScreen({ route }) {
                 />
               </TouchableOpacity>
               <Text style={[styles.dateText, { color: colors.text }]}>
-                {selectedDate ? format(selectedDate, 'EEEE, MMMM d, yyyy') : 'Loading...'}
+                {format(selectedDate, 'EEEE, MMMM d, yyyy')}
               </Text>
               <TouchableOpacity
                 onPress={goToNextDate}
@@ -506,14 +498,6 @@ export default function MosqueScheduleScreen({ route }) {
               </TouchableOpacity>
             </View>
           )}
-          {availableDates.length === 1 && selectedDate && (
-            <Text style={dynamicStyles.sectionSubtitle}>
-              {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-            </Text>
-          )}
-          {availableDates.length === 0 && (
-            <Text style={dynamicStyles.sectionSubtitle}>No schedules available</Text>
-          )}
         </View>
 
         {loadingPrayerTimes ? (
@@ -527,7 +511,16 @@ export default function MosqueScheduleScreen({ route }) {
           <View style={styles.noDataContainer}>
             <Ionicons name="time-outline" size={48} color={colors.textSecondary} />
             <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-              Prayer times not available for today
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const selectedDateNormalized = new Date(selectedDate);
+                selectedDateNormalized.setHours(0, 0, 0, 0);
+                if (isSameDay(selectedDateNormalized, today)) {
+                  return "Prayer times not available for today";
+                }
+                return `Prayer times not available for ${format(selectedDate, 'MMMM d, yyyy')}`;
+              })()}
             </Text>
           </View>
         ) : (
@@ -541,6 +534,7 @@ export default function MosqueScheduleScreen({ route }) {
                 if (prayerTimes[key] && typeof prayerTimes[key] === 'object' && !Array.isArray(prayerTimes[key])) {
                   const value = prayerTimes[key];
                   // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
+                  // Preserve exact format from database (24-hour like "14:30" or 12-hour like "2:30 PM")
                   const athan = (value.athan || value.AThan) ? String(value.athan || value.AThan).trim() : '';
                   const iqama = (value.iqama || value.Iqama) ? String(value.iqama || value.Iqama).trim() : '';
                   if (athan || iqama) {
@@ -557,6 +551,7 @@ export default function MosqueScheduleScreen({ route }) {
               });
 
               // Handle sunrise - single string value (after Fajr)
+              // Preserve exact format from database (24-hour like "06:30" or 12-hour like "6:30 AM")
               if (prayerTimes.sunrise && (typeof prayerTimes.sunrise === 'string' || typeof prayerTimes.sunrise === 'number')) {
                 const sunriseValue = String(prayerTimes.sunrise).trim();
                 if (sunriseValue !== '') {
@@ -572,6 +567,7 @@ export default function MosqueScheduleScreen({ route }) {
                 jummahArray.forEach((jummahItem, index) => {
                   if (jummahItem && typeof jummahItem === 'object') {
                     // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
+                    // Preserve exact format from database (24-hour like "14:30" or 12-hour like "2:30 PM")
                     const athan = (jummahItem.athan || jummahItem.AThan) ? String(jummahItem.athan || jummahItem.AThan).trim() : '';
                     const iqama = (jummahItem.iqama || jummahItem.Iqama) ? String(jummahItem.iqama || jummahItem.Iqama).trim() : '';
                     if (athan || iqama) {
