@@ -65,10 +65,62 @@ npx expo start --android
 
 ## Troubleshooting
 
+### iOS: "Developer Mode Required" Message
+
+If you see "Developer Mode Required" when opening the app on your iPhone:
+
+**Step 1: Enable Developer Mode**
+1. Open **Settings** on your iPhone
+2. Go to **Privacy & Security** (or just **Privacy** on older iOS versions)
+3. Scroll down and tap **Developer Mode**
+4. Toggle **Developer Mode** to **ON**
+5. Your phone will restart (this is normal)
+
+**Step 2: Trust the Developer Certificate**
+1. After restart, go to **Settings** > **General** > **VPN & Device Management** (or **Device Management**)
+2. You should see a profile under "Developer App" section
+3. Tap on it and tap **Trust "[Your Developer Name]"**
+4. Confirm by tapping **Trust**
+
+**Step 3: Open the App**
+- Now you should be able to open the app without the Developer Mode error
+
+**Note:** Developer Mode is only available on iOS 16 and later. If you're on iOS 15 or earlier, you'll need to update your device.
+
 ### Build Fails?
 - Make sure you're logged in: `npx eas login`
 - Check your `app.json` has correct bundle identifier/package name
 - Ensure you have an Expo account (free)
+
+### "No Development Server Found" Error
+
+If you see "No development server found" when opening the app:
+
+1. **Make sure the development server is running:**
+   ```bash
+   npx expo start --dev-client
+   ```
+   Or with cleared cache:
+   ```bash
+   npx expo start --dev-client --clear
+   ```
+
+2. **Ensure your phone and computer are on the same Wi-Fi network**
+
+3. **If on different networks, use tunnel mode:**
+   ```bash
+   npx expo start --dev-client --tunnel
+   ```
+
+4. **In the app, you can:**
+   - Scan the QR code that appears in the terminal
+   - Or manually enter the connection URL shown in the terminal
+   - The URL will look like: `exp://192.168.x.x:8081` or `exp://xxx.xxx.xxx.xxx:8081` (for tunnel)
+
+5. **If still not connecting:**
+   - Check your firewall settings
+   - Ensure port 8081 is not blocked
+   - Try restarting the development server
 
 ### Still Timing Out?
 - The app might be too complex for Expo Go

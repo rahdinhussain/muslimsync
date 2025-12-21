@@ -30,8 +30,8 @@ export default function HelpSupportScreen() {
         // Fallback: copy email to clipboard or show alert
         Alert.alert('Email', `Please send an email to ${email}`);
       }
-    }).catch(err => {
-      console.error('Error opening email:', err);
+    }).catch(() => {
+      // Error opening email (non-critical)
     });
   };
 
@@ -208,6 +208,20 @@ export default function HelpSupportScreen() {
                 <Text style={dynamicStyles.faqAnswer}>{faq.answer}</Text>
               </View>
             ))}
+          </View>
+
+          <View style={[dynamicStyles.contactCard, { marginTop: 10 }]}>
+            <Text style={dynamicStyles.contactTitle}>More Information</Text>
+            <Text style={[dynamicStyles.sectionText, { marginBottom: 15 }]}>
+              Visit{' '}
+              <Text 
+                style={{ color: '#007AFF', textDecorationLine: 'underline' }}
+                onPress={() => Linking.openURL('https://muslimsync.com')}
+              >
+                muslimsync.com
+              </Text>
+              {' '}for more information
+            </Text>
           </View>
         </ScrollView>
       </View>

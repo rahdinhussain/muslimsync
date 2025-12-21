@@ -250,7 +250,6 @@ export default function MosqueScheduleScreen({ route }) {
         setAvailableDates([]);
       }
     } catch (error) {
-      console.error('Error fetching available dates:', error);
       setAvailableDates([]);
     }
   };
@@ -274,7 +273,6 @@ export default function MosqueScheduleScreen({ route }) {
           // No prayer times found for selected date
           setPrayerTimes(null);
         } else {
-          console.error('Error fetching prayer times:', error);
           setPrayerTimes(null);
         }
       } else {
@@ -282,7 +280,6 @@ export default function MosqueScheduleScreen({ route }) {
         setPrayerTimes(data.times || null);
       }
     } catch (error) {
-      console.error('Unexpected error fetching prayer times:', error);
       setPrayerTimes(null);
     } finally {
       setLoadingPrayerTimes(false);
@@ -337,7 +334,6 @@ export default function MosqueScheduleScreen({ route }) {
         Alert.alert('Unable to place call', 'Calling is not supported on this device.');
       }
     } catch (error) {
-      console.log('Error opening dialer:', error);
       Alert.alert('Error', 'Unable to open the phone dialer.');
     }
   };

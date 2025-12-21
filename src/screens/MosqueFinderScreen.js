@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,7 +47,7 @@ export default function MosqueFinderScreen() {
           .order('name', { ascending: true });
 
         if (error) {
-          console.error('Error loading mosques from Supabase:', error.message || error);
+          // Error loading mosques from Supabase
           setLoadError(error.message || 'Failed to load mosques. Please try again later.');
           setMosques([]);
         } else {
@@ -68,7 +69,6 @@ export default function MosqueFinderScreen() {
           setMosques(mapped);
         }
       } catch (err) {
-        console.error('Unexpected error loading mosques:', err);
         setLoadError('Failed to load mosques. Please check your connection.');
         setMosques([]);
       } finally {
@@ -636,6 +636,16 @@ export default function MosqueFinderScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="location-outline" size={64} color={colors.textTertiary} />
             <Text style={dynamicStyles.emptyText}>No mosques found</Text>
+            <Text style={[dynamicStyles.emptyText, { marginTop: 15, fontSize: 14, textAlign: 'center', paddingHorizontal: 30, lineHeight: 22 }]}>
+              Visit{' '}
+              <Text 
+                style={{ color: '#007AFF', textDecorationLine: 'underline' }}
+                onPress={() => Linking.openURL('https://muslimsync.com')}
+              >
+                muslimsync.com
+              </Text>
+              {' '}and contact us to add your mosque
+            </Text>
           </View>
         ) : (
           <>

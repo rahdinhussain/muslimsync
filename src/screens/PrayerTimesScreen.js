@@ -17,6 +17,7 @@ import * as Location from 'expo-location';
 import { format, addDays } from 'date-fns';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCachedLocation } from '../utils/locationCache';
 
 const { width } = Dimensions.get('window');
 
@@ -45,7 +46,7 @@ export default function PrayerTimesScreen() {
         setCityName(cachedCity);
       }
     } catch (error) {
-      console.log('Error loading cached city name:', error);
+      // Error loading cached city name (non-critical)
     }
   };
 
@@ -76,7 +77,7 @@ export default function PrayerTimesScreen() {
         setPrayerMethod(parseInt(saved, 10));
       }
     } catch (error) {
-      console.log('Error loading prayer method:', error);
+      // Error loading prayer method (non-critical)
     }
   };
 
@@ -128,20 +129,26 @@ export default function PrayerTimesScreen() {
 
   const getLocation = async () => {
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required for accurate prayer times.');
-        setLoading(false);
-        return;
-      }
-
-      let locationData = await Location.getCurrentPositionAsync({});
-      setLocation(locationData.coords);
+      // Use shared cached location (same cache as Qibla screen)
+      const cachedLoc = await getCachedLocation(false);
       
-      // Only fetch city name if not already cached (first time)
-      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
-      if (!cachedCity) {
-        getCityName(locationData.coords.latitude, locationData.coords.longitude);
+      if (cachedLoc) {
+        setLocation(cachedLoc);
+        
+        // Only fetch city name if not already cached (first time)
+        const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
+        if (!cachedCity) {
+          getCityName(cachedLoc.latitude, cachedLoc.longitude);
+        }
+      } else {
+        // Fallback if cache fails
+        Alert.alert('Error', 'Failed to get location. Using default location.');
+        setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
+        
+        const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
+        if (!cachedCity) {
+          getCityName(40.7128, -74.0060);
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to get location. Using default location.');
@@ -181,8 +188,7 @@ export default function PrayerTimesScreen() {
         // Rate limit exceeded - just don't show city name
         setCityName(null);
       } else {
-        // For other errors, log but don't show to user
-        console.log('Error getting city name:', error.message || error);
+        // Error getting city name (non-critical)
         setCityName(null);
       }
     }

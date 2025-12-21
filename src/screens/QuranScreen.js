@@ -61,8 +61,8 @@ export default function QuranScreen() {
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
     Promise.all([
-      loadSettings().catch(err => console.log('Settings load error:', err)),
-      loadBookmarks().catch(err => console.log('Bookmarks load error:', err))
+      loadSettings().catch(() => {}),
+      loadBookmarks().catch(() => {})
     ]);
   }, []);
 
@@ -77,7 +77,6 @@ export default function QuranScreen() {
   // Reload verses when translation changes
   useEffect(() => {
     if (selectedSurah && translationId) {
-      console.log('Translation ID changed, reloading verses:', translationId);
       // Reload verses to apply new translation
       loadSurahVerses();
     }
@@ -96,7 +95,7 @@ export default function QuranScreen() {
       if (font) setArabicFont(font);
       if (size) setFontSize(parseInt(size, 10));
     } catch (error) {
-      console.log('Error loading font settings:', error);
+      // Error loading font settings (non-critical)
     }
   };
   useEffect(() => {
@@ -119,8 +118,8 @@ export default function QuranScreen() {
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
     Promise.all([
-      loadSettings().catch(err => console.log('Settings load error:', err)),
-      loadBookmarks().catch(err => console.log('Bookmarks load error:', err))
+      loadSettings().catch(() => {}),
+      loadBookmarks().catch(() => {})
     ]);
   }, []);
 
@@ -161,7 +160,6 @@ export default function QuranScreen() {
               const downloadedTranslation = await getSurahTranslation(selectedSurah.number, translationId);
               if (downloadedTranslation) {
                 // Translation is downloaded for this surah - use offline version
-                console.log('Using downloaded translation for surah', selectedSurah.number);
                 surahData = surahData.map(verse => {
                   const translationVerse = downloadedTranslation.find(t => t.number === verse.number);
                   return {
@@ -171,7 +169,6 @@ export default function QuranScreen() {
                 });
               } else {
                 // Translation is selected but NOT downloaded for this surah - fetch only this surah from API
-                console.log('Translation selected but not downloaded, fetching for surah', selectedSurah.number);
                 try {
                   // Map translation IDs to GitHub API folder names
                   const translationResourceMap = {
@@ -264,7 +261,6 @@ export default function QuranScreen() {
                             }
 
                             if (apiTranslation && apiTranslation.length > 0) {
-                              console.log('Translation fetched from API for surah', selectedSurah.number, ':', apiTranslation.length, 'verses');
                               surahData = surahData.map(verse => {
                                 // Try multiple matching strategies
                                 let translationVerse = apiTranslation.find(t => {
@@ -283,24 +279,19 @@ export default function QuranScreen() {
                                   translation: translationVerse && translationVerse.text ? translationVerse.text.trim() : null,
                                 };
                               });
-                              console.log('Merged translation with verses. Verses with translation:', surahData.filter(v => v.translation && v.translation.trim() !== '').length);
                               break;
                             } else {
-                              console.log('API translation is empty or invalid - no valid verses found');
                             }
                           } catch (parseError) {
-                            console.log('Failed to parse translation response:', parseError.message);
                             continue;
                           }
                         }
                       }
                     } catch (apiError) {
-                      console.log('Translation API error for surah', selectedSurah.number, ':', apiError.message);
                       continue;
                     }
                   }
                 } catch (error) {
-                  console.log('Failed to fetch translation from API for surah', selectedSurah.number, ':', error);
                 }
               }
             }
@@ -310,10 +301,8 @@ export default function QuranScreen() {
             return; // Use downloaded file, don't fetch from API
           } else {
             // Cache is invalid, mark as not downloaded and fetch from API
-            console.log('Invalid cache, fetching from API');
           }
         } catch (cacheError) {
-          console.log('Cache read error, fetching from API:', cacheError);
           // If cache is corrupted, fetch from API
         }
       }
@@ -354,7 +343,6 @@ export default function QuranScreen() {
       for (let i = 0; i < apiEndpoints.length; i++) {
         try {
           const { url, format } = apiEndpoints[i];
-          console.log(`Trying API ${i + 1}: ${format}`);
           
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -371,16 +359,14 @@ export default function QuranScreen() {
           clearTimeout(timeoutId);
 
           if (!response.ok) {
-            console.log(`API ${i + 1} returned status: ${response.status}`);
             lastError = new Error(`HTTP ${response.status}`);
             continue;
           }
 
-          // Get response as text first to debug
+          // Get response as text first
           const responseText = await response.text();
           
           if (!responseText || responseText.trim() === '' || responseText.trim() === 'undefined') {
-            console.log(`API ${i + 1} returned empty response`);
             lastError = new Error('Empty response from API');
             continue;
           }
@@ -525,11 +511,9 @@ export default function QuranScreen() {
               }
             }
             
-            console.log(`API ${i + 1} invalid structure:`, JSON.stringify(data).substring(0, 200));
             lastError = new Error('Invalid response structure');
           } catch (jsonError) {
-            console.log(`API ${i + 1} JSON parse failed:`, jsonError.message);
-            console.log(`Response preview:`, responseText.substring(0, 200));
+            // JSON parse failed, trying next endpoint
             lastError = jsonError;
             continue;
           }
@@ -552,8 +536,6 @@ export default function QuranScreen() {
       // If all APIs failed, throw the last error with helpful message
       if (!data || !data.code || data.code !== 200) {
         const errorMsg = lastError?.message || 'All API endpoints failed';
-        console.error('All API endpoints failed. Last error:', errorMsg);
-        console.error('Tried endpoints:', apiEndpoints.map(e => e.url));
         throw new Error(errorMsg);
       }
 
@@ -561,9 +543,7 @@ export default function QuranScreen() {
         // Get downloaded translation if available for THIS surah only
         let downloadedTranslation = null;
         if (translationId) {
-          console.log('Translation ID selected:', translationId, 'for surah', selectedSurah.number);
           downloadedTranslation = await getSurahTranslation(selectedSurah.number, translationId);
-          console.log('Downloaded translation found for surah', selectedSurah.number, ':', downloadedTranslation ? 'Yes' : 'No');
         }
 
         // If translation is selected but not downloaded for THIS surah, fetch only THIS surah from API
@@ -675,11 +655,9 @@ export default function QuranScreen() {
             let translationFetched = false;
             let lastError = null;
             
-            console.log('Fetching translation for:', translationId, 'Surah:', selectedSurah.number);
             
             for (let i = 0; i < apiEndpoints.length; i++) {
               const { url, format } = apiEndpoints[i];
-              console.log(`Trying endpoint ${i + 1}/${apiEndpoints.length}: ${format} - ${url.substring(0, 80)}...`);
               try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 20000);
@@ -697,11 +675,9 @@ export default function QuranScreen() {
 
                 if (response.ok) {
                   const responseText = await response.text();
-                  console.log(`Endpoint ${i + 1} response length:`, responseText ? responseText.length : 0);
                   if (responseText && responseText.trim() !== '' && responseText.trim() !== 'undefined') {
                     try {
                       const transData = JSON.parse(responseText);
-                      console.log(`Endpoint ${i + 1} parsed. Type:`, Array.isArray(transData) ? 'Array' : typeof transData, 'Keys:', Object.keys(transData).slice(0, 5));
                       
                       // Handle GitHub/JSON format - actual format: { chapter: [{ chapter, verse, text }, ...] }
                       if (format === 'github') {
@@ -732,14 +708,11 @@ export default function QuranScreen() {
                           }).filter(t => t.text && t.text.length > 0);
                           
                           if (downloadedTranslation.length > 0) {
-                            console.log(`✅ Translation fetched from endpoint ${i + 1} (${format}):`, downloadedTranslation.length, 'verses');
                             translationFetched = true;
                             break;
                           } else {
-                            console.log(`⚠️ Endpoint ${i + 1} (${format}) returned array but no valid translations after filtering`);
                           }
                         } else {
-                          console.log(`⚠️ Endpoint ${i + 1} (${format}) - No verses array found. Keys:`, Object.keys(transData));
                         }
                       }
                       
@@ -826,34 +799,27 @@ export default function QuranScreen() {
                       
                       // If we got here, the response structure is unexpected
                       lastError = `Unexpected response structure from endpoint ${i + 1} (${format}). Keys: ${Object.keys(transData).join(', ')}`;
-                      console.log(`❌ Endpoint ${i + 1} (${format}) - Unexpected structure:`, Object.keys(transData));
                     } catch (parseError) {
                       lastError = `JSON parse error from endpoint ${i + 1}: ${parseError.message}`;
-                      console.log(`❌ Endpoint ${i + 1} (${format}) - Parse error:`, parseError.message);
                       continue;
                     }
                   } else {
                     lastError = `Empty response from endpoint ${i + 1}`;
-                    console.log(`❌ Endpoint ${i + 1} (${format}) - Empty response`);
                   }
                 } else {
                   lastError = `HTTP ${response.status} from endpoint ${i + 1}`;
-                  console.log(`❌ Endpoint ${i + 1} (${format}) - HTTP ${response.status}`);
                 }
               } catch (apiError) {
                 if (apiError.name === 'AbortError') {
                   lastError = `Timeout from endpoint ${i + 1}`;
-                  console.log(`❌ Endpoint ${i + 1} (${format}) - Timeout`);
                 } else {
                   lastError = `Error from endpoint ${i + 1}: ${apiError.message}`;
-                  console.log(`❌ Endpoint ${i + 1} (${format}) - Error:`, apiError.message);
                 }
                 // Try next endpoint
                 continue;
               }
             }
             
-            console.log('Translation fetch result:', translationFetched ? 'SUCCESS' : 'FAILED', downloadedTranslation ? `(${downloadedTranslation.length} verses)` : '');
             
             if (!translationFetched && translationId && selectedSurah) {
               // Show error to user if translation failed to load
@@ -985,14 +951,14 @@ export default function QuranScreen() {
             await saveSurahVerses(selectedSurah.number, surahData);
             // Don't mark as downloaded - only mark when user explicitly downloads
           } catch (saveError) {
-            console.log('Failed to cache verses:', saveError);
+            // Failed to cache verses (non-critical)
             // Continue even if caching fails
           }
         }
 
         setVerses(surahData);
       } else {
-        console.error('Invalid API response structure:', data);
+        // Invalid API response structure
         setVerses([]); // Clear verses so user can retry
         Alert.alert(
           'Connection Issue',
@@ -1001,7 +967,7 @@ export default function QuranScreen() {
         );
       }
     } catch (error) {
-      console.error('Error loading verses:', error);
+      // Error loading verses (handled by Alert below)
       setVerses([]); // Clear verses so user can retry
       
       // Show user-friendly error message
@@ -1084,7 +1050,7 @@ export default function QuranScreen() {
         title: `${selectedSurah.name} - Verse ${verse.number}`,
       });
     } catch (error) {
-      console.error('Error sharing:', error);
+      // Error sharing (non-critical)
     }
   };
 

@@ -10,3 +10,4 @@ CREATE INDEX IF NOT EXISTS idx_dua_categories_slug ON dua_categories(slug);
 
 
 
+

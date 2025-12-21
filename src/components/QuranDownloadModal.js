@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import {
@@ -23,6 +23,7 @@ import {
 
 export default function QuranDownloadModal({ visible, onClose, onDownload }) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [selectedReciter, setSelectedReciter] = useState(null);
   const [selectedTranslation, setSelectedTranslation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -70,13 +71,14 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 25,
       borderTopRightRadius: 25,
-      paddingTop: 20,
+      paddingTop: 0,
     },
     header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 20,
+      paddingTop: Math.max(insets.top, 20), // Use safe area inset or minimum 20
       paddingBottom: 20,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderVisible,
@@ -145,7 +147,7 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       transparent={true}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={dynamicStyles.modalOverlay} edges={['top']}>
+      <SafeAreaView style={dynamicStyles.modalOverlay} edges={[]}>
         <View style={dynamicStyles.modalContent}>
           <View style={dynamicStyles.header}>
             <Text style={dynamicStyles.headerTitle}>Download Settings</Text>

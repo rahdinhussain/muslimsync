@@ -349,9 +349,9 @@ export default function DuaScreen() {
     }
   }, [selectedDua?.id]);
 
-  // Check text download status when dua is selected
+  // Check text download status and load downloaded text when dua is selected
   useEffect(() => {
-    const checkTextDownloadStatus = async () => {
+    const checkAndLoadDownloadedText = async () => {
       if (selectedDua?.id) {
         const duaIdString = String(selectedDua.id);
         const isTextDownloaded = await isDuaTextDownloaded(duaIdString);
@@ -364,9 +364,31 @@ export default function DuaScreen() {
           }
           return newSet;
         });
+        
+        // If text is downloaded, load it and update selectedDua
+        if (isTextDownloaded) {
+          try {
+            const downloadedText = await getDownloadedDuaText(duaIdString);
+            if (downloadedText) {
+              // Update selectedDua with downloaded text (prefer downloaded over API)
+              setSelectedDua(prev => ({
+                ...prev,
+                title: downloadedText.title || prev?.title,
+                arabic: downloadedText.arabic || prev?.arabic,
+                transliteration: downloadedText.transliteration || prev?.transliteration,
+                translation: downloadedText.translation || prev?.translation,
+                reference: downloadedText.reference || prev?.reference,
+                isDownloaded: true,
+              }));
+            }
+          } catch (error) {
+            // Error loading downloaded text - use existing selectedDua
+            console.log('Error loading downloaded dua text:', error);
+          }
+        }
       }
     };
-    checkTextDownloadStatus();
+    checkAndLoadDownloadedText();
   }, [selectedDua?.id]);
 
   const loadDownloadedDuas = async () => {
@@ -374,7 +396,7 @@ export default function DuaScreen() {
       const list = await getDownloadedDuaAudioList();
       setDownloadedDuas(list);
     } catch (error) {
-      console.log('Error loading downloaded duas:', error);
+      // Error loading downloaded duas (non-critical)
     }
   };
 
@@ -391,7 +413,7 @@ export default function DuaScreen() {
       }
       setDownloadedDuaTexts(textSet);
     } catch (error) {
-      console.log('Error loading downloaded dua texts:', error);
+      // Error loading downloaded dua texts (non-critical)
     }
   };
 
@@ -405,7 +427,7 @@ export default function DuaScreen() {
       setDbCategories(categories);
       setDuaCounts(counts);
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      // Error fetching categories
     } finally {
       setLoadingCategories(false);
     }
@@ -496,24 +518,158 @@ export default function DuaScreen() {
   const fetchCategoryDuas = async (categoryId, category) => {
     try {
       setLoadingDuas(true);
-      const duas = await fetchDuasByCategory(categoryId);
       
-      // Update category with fetched duas
+      // First, try to load downloaded duas from local storage
+      let downloadedDuas = [];
+      try {
+        const downloadedAudioList = await getDownloadedDuaAudioList();
+        for (const duaId of downloadedAudioList) {
+          const downloadedText = await getDownloadedDuaText(duaId);
+          if (downloadedText) {
+            // Filter by category_id if available, or include if category_id matches
+            const downloadedCategoryId = downloadedText.category_id;
+            if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
+              downloadedDuas.push({
+                id: downloadedText.id,
+                title: downloadedText.title,
+                arabic: downloadedText.arabic,
+                transliteration: downloadedText.transliteration || '',
+                translation: downloadedText.translation || '',
+                reference: downloadedText.reference || '',
+                audioUrl: null, // Will be set from API if available
+                audioUrlFallback: null,
+                category_id: downloadedCategoryId || categoryId,
+                isDownloaded: true,
+              });
+            }
+          }
+        }
+      } catch (localError) {
+        // Error loading from local storage - continue to API
+        console.log('Error loading downloaded duas:', localError);
+      }
+      
+      // Try to fetch from API/database
+      let apiDuas = [];
+      try {
+        apiDuas = await fetchDuasByCategory(categoryId);
+      } catch (apiError) {
+        // API fetch failed - use downloaded duas if available
+        console.log('Error fetching duas from API:', apiError);
+        if (downloadedDuas.length > 0) {
+          // We have downloaded duas, use those
+          const updatedCategory = {
+            ...category,
+            duas: downloadedDuas,
+          };
+          setSelectedCategory(updatedCategory);
+          setDbDuas(prev => ({
+            ...prev,
+            [categoryId]: downloadedDuas,
+          }));
+          setLoadingDuas(false);
+          return; // Use downloaded duas, no need to show error
+        } else {
+          // No downloaded duas and API failed - show error
+          throw apiError;
+        }
+      }
+      
+      // Merge API duas with downloaded duas
+      // Prefer downloaded text if available, but use API for audio URLs and other metadata
+      const mergedDuas = apiDuas.map(apiDua => {
+        const downloadedDua = downloadedDuas.find(d => d.id === apiDua.id || String(d.id) === String(apiDua.id));
+        if (downloadedDua) {
+          // Use downloaded text but keep API audio URLs
+          return {
+            ...apiDua,
+            title: downloadedDua.title || apiDua.title,
+            arabic: downloadedDua.arabic || apiDua.arabic,
+            transliteration: downloadedDua.transliteration || apiDua.transliteration,
+            translation: downloadedDua.translation || apiDua.translation,
+            reference: downloadedDua.reference || apiDua.reference,
+            isDownloaded: true,
+          };
+        }
+        return apiDua;
+      });
+      
+      // Add any downloaded duas that aren't in the API response (in case they were removed from DB)
+      apiDuas.forEach(apiDua => {
+        const exists = mergedDuas.find(d => d.id === apiDua.id || String(d.id) === String(apiDua.id));
+        if (!exists) {
+          // This shouldn't happen, but just in case
+        }
+      });
+      
+      // Add downloaded duas that might not be in API (offline-only duas)
+      downloadedDuas.forEach(downloadedDua => {
+        const exists = mergedDuas.find(d => d.id === downloadedDua.id || String(d.id) === String(downloadedDua.id));
+        if (!exists) {
+          mergedDuas.push(downloadedDua);
+        }
+      });
+      
+      // Update category with merged duas
       const updatedCategory = {
         ...category,
-        duas: duas,
+        duas: mergedDuas,
       };
       setSelectedCategory(updatedCategory);
       
       // Store in cache
       setDbDuas(prev => ({
         ...prev,
-        [categoryId]: duas,
+        [categoryId]: mergedDuas,
       }));
     } catch (error) {
-      console.error('Error fetching duas:', error);
-      Alert.alert('Error', 'Failed to load duas. Please try again.');
-      // Set empty duas array on error
+      // Error fetching duas - try to use downloaded ones as fallback
+      try {
+        const downloadedAudioList = await getDownloadedDuaAudioList();
+        const fallbackDuas = [];
+        for (const duaId of downloadedAudioList) {
+          const downloadedText = await getDownloadedDuaText(duaId);
+          if (downloadedText) {
+            // Filter by category_id if available
+            const downloadedCategoryId = downloadedText.category_id;
+            if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
+              fallbackDuas.push({
+                id: downloadedText.id,
+                title: downloadedText.title,
+                arabic: downloadedText.arabic,
+                transliteration: downloadedText.transliteration || '',
+                translation: downloadedText.translation || '',
+                reference: downloadedText.reference || '',
+                audioUrl: null,
+                audioUrlFallback: null,
+                category_id: downloadedCategoryId || categoryId,
+                isDownloaded: true,
+              });
+            }
+          }
+        }
+        
+        if (fallbackDuas.length > 0) {
+          // Use downloaded duas as fallback
+          const updatedCategory = {
+            ...category,
+            duas: fallbackDuas,
+          };
+          setSelectedCategory(updatedCategory);
+          setDbDuas(prev => ({
+            ...prev,
+            [categoryId]: fallbackDuas,
+          }));
+          setLoadingDuas(false);
+          return; // Successfully loaded from local storage
+        }
+      } catch (fallbackError) {
+        // Even fallback failed
+        console.log('Fallback to local storage also failed:', fallbackError);
+      }
+      
+      // No downloaded duas available - show error
+      Alert.alert('Error', 'Failed to load duas. Please check your internet connection.');
       setSelectedCategory({
         ...category,
         duas: [],
@@ -538,7 +694,6 @@ export default function DuaScreen() {
     const fileExists = await localAudioFileExists(duaIdString);
     if (fileExists) {
       const fileUri = getLocalAudioPath(duaIdString);
-      console.log('Using local audio file:', fileUri);
       return fileUri;
     }
 
@@ -585,12 +740,9 @@ export default function DuaScreen() {
           );
 
           newSound = (await Promise.race([loadPromise, quickTimeoutPromise])).sound;
-          console.log('✅ Primary URL worked!');
         } catch (primaryError) {
-          console.log('❌ Primary URL failed, trying fallback URL:', primaryError.message);
           // Fallback to fallback URL
           audioUri = dua.audioUrlFallback;
-          console.log('Trying fallback URL:', audioUri);
           
           // Try again with fallback URL
           const timeoutPromise = new Promise((_, reject) => {
@@ -603,7 +755,6 @@ export default function DuaScreen() {
           );
 
           newSound = (await Promise.race([loadPromise, timeoutPromise])).sound;
-          console.log('✅ Fallback URL worked!');
         }
       } else {
         // Local file or no fallback - direct load
@@ -633,7 +784,7 @@ export default function DuaScreen() {
       setIsPlaying(true);
       setIsLoading(false);
     } catch (error) {
-      console.error('Error playing audio:', error);
+      // Error playing audio
       Alert.alert('Error', 'Failed to play audio. Please try again.');
       setIsLoading(false);
       setIsPlaying(false);
@@ -677,12 +828,9 @@ export default function DuaScreen() {
             FileSystem.downloadAsync(audioUrl, fileUri),
             quickTimeoutPromise
           ]);
-          console.log('✅ Downloaded from primary URL');
         } catch (primaryError) {
-          console.log('❌ Primary URL download failed, trying fallback URL');
           // Fallback to fallback URL
           audioUrl = dua.audioUrlFallback;
-          console.log('Trying fallback URL:', audioUrl);
           
           // Delete any incomplete file
           try {
@@ -702,7 +850,6 @@ export default function DuaScreen() {
             FileSystem.downloadAsync(audioUrl, fileUri),
             timeoutPromise
           ]);
-          console.log('✅ Downloaded from fallback URL');
         }
       } else {
         // Direct download for URLs without fallback
@@ -731,7 +878,7 @@ export default function DuaScreen() {
         throw new Error('Download failed - file not saved properly');
       }
     } catch (error) {
-      console.error('Error downloading audio:', error);
+      // Error downloading audio
       Alert.alert('Error', 'Failed to download audio. Please check your internet connection.');
     } finally {
       setDownloadingDua(null);
@@ -743,7 +890,13 @@ export default function DuaScreen() {
       setDownloadingDuaText(dua.id);
       const duaIdString = String(dua.id);
       
-      // Save dua text data
+      // Get category ID from selected category or dua object
+      let categoryId = dua.category_id;
+      if (!categoryId && selectedCategory?.dbId) {
+        categoryId = selectedCategory.dbId;
+      }
+      
+      // Save dua text data with category_id for filtering
       const duaData = {
         id: duaIdString,
         title: dua.title,
@@ -751,6 +904,7 @@ export default function DuaScreen() {
         transliteration: dua.transliteration || '',
         translation: dua.translation || '',
         reference: dua.reference || '',
+        category_id: categoryId, // Save category_id for filtering
       };
       
       await saveDownloadedDua(duaIdString, duaData);
@@ -762,7 +916,7 @@ export default function DuaScreen() {
         Alert.alert('Success', 'Dua text downloaded successfully!');
       }
     } catch (error) {
-      console.error('Error downloading dua text:', error);
+      // Error downloading dua text
       if (!silent) {
         Alert.alert('Error', 'Failed to download dua text.');
       }

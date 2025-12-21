@@ -61,7 +61,7 @@ export default function DhikrScreen() {
         setCounts(JSON.parse(savedCounts));
       }
     } catch (error) {
-      console.error('Error loading counts:', error);
+      // Error loading counts (non-critical)
     }
   };
 
@@ -75,7 +75,7 @@ export default function DhikrScreen() {
       setCounts(newCounts);
       await AsyncStorage.setItem('dhikr_counts', JSON.stringify(newCounts));
     } catch (error) {
-      console.error('Error saving count:', error);
+      // Error saving count (non-critical)
     }
   };
 

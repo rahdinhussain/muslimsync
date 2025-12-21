@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCachedLocation, clearLocationCache } from '../utils/locationCache';
 
 export default function LocationSettingsScreen() {
   const { colors, isDark } = useTheme();
@@ -30,22 +31,33 @@ export default function LocationSettingsScreen() {
   const loadStoredLocation = async () => {
     try {
       setLoading(true);
-      const city = await AsyncStorage.getItem('@prayer_city_name');
-      const lat = await AsyncStorage.getItem('@prayer_location_lat');
-      const lng = await AsyncStorage.getItem('@prayer_location_lng');
       
+      // Try to load from shared location cache first
+      try {
+        const cachedLoc = await getCachedLocation(false);
+        if (cachedLoc) {
+          setCurrentLocation(cachedLoc);
+        }
+      } catch (cacheError) {
+        // Fallback to old storage method
+        const lat = await AsyncStorage.getItem('@prayer_location_lat');
+        const lng = await AsyncStorage.getItem('@prayer_location_lng');
+        
+        if (lat && lng) {
+          setCurrentLocation({
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lng),
+          });
+        }
+      }
+      
+      // Load city name
+      const city = await AsyncStorage.getItem('@prayer_city_name');
       if (city) {
         setCurrentCity(city);
       }
-      
-      if (lat && lng) {
-        setCurrentLocation({
-          latitude: parseFloat(lat),
-          longitude: parseFloat(lng),
-        });
-      }
     } catch (error) {
-      console.log('Error loading stored location:', error);
+      // Error loading stored location (non-critical)
     } finally {
       setLoading(false);
     }
@@ -55,17 +67,16 @@ export default function LocationSettingsScreen() {
     try {
       setUpdating(true);
       
-      // Request location permission
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to update your location.');
+      // Force refresh location (bypass cache)
+      const newLocation = await getCachedLocation(true);
+      
+      if (!newLocation) {
+        Alert.alert('Error', 'Failed to get location. Please try again.');
         setUpdating(false);
         return;
       }
-
-      // Get current location
-      let locationData = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = locationData.coords;
+      
+      const { latitude, longitude } = newLocation;
       
       // Get city name
       try {
@@ -98,7 +109,6 @@ export default function LocationSettingsScreen() {
         }
       }
     } catch (error) {
-      console.log('Error updating location:', error);
       Alert.alert('Error', 'Failed to update location. Please try again.');
     } finally {
       setUpdating(false);

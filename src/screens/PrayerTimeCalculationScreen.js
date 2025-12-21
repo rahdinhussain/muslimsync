@@ -51,7 +51,7 @@ export default function PrayerTimeCalculationScreen() {
         setSelectedMethod(parseInt(saved, 10));
       }
     } catch (error) {
-      console.log('Error loading prayer method:', error);
+      // Error loading prayer method (non-critical)
     }
   };
 
@@ -61,7 +61,6 @@ export default function PrayerTimeCalculationScreen() {
       await AsyncStorage.setItem(STORAGE_KEY, methodId.toString());
       Alert.alert('Success', 'Prayer time calculation method updated. Please refresh prayer times to see the changes.');
     } catch (error) {
-      console.error('Error saving prayer method:', error);
       Alert.alert('Error', 'Failed to save prayer method preference.');
     }
   };

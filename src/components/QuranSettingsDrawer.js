@@ -9,7 +9,7 @@ import {
   Switch,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -36,6 +36,7 @@ const STORAGE_KEYS = {
 
 export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange }) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [selectedFont, setSelectedFont] = useState('system');
   const [fontSize, setFontSize] = useState(22);
   const [selectedTranslation, setSelectedTranslation] = useState(null);
@@ -1462,7 +1463,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       justifyContent: 'space-between',
       alignItems: 'center',
       padding: 20,
-      paddingTop: 10,
+      paddingTop: Math.max(insets.top, 20), // Use safe area inset or minimum 20
       borderBottomWidth: 1,
       borderBottomColor: colors.borderVisible,
     },
@@ -1555,7 +1556,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         />
         <SafeAreaView
           style={dynamicStyles.drawer}
-          edges={['top', 'right', 'bottom', 'left']}
+          edges={['right', 'bottom', 'left']}
         >
           <View style={dynamicStyles.drawerContent}>
             <View style={dynamicStyles.header}>
@@ -2059,7 +2060,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           />
           <SafeAreaView
             style={dynamicStyles.drawer}
-            edges={['top', 'right', 'bottom', 'left']}
+            edges={['right', 'bottom', 'left']}
           >
             <View style={dynamicStyles.drawerContent}>
               <View style={dynamicStyles.header}>

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -187,6 +188,19 @@ export default function AboutScreen() {
                 <Text style={dynamicStyles.featureText}>Offline Support</Text>
               </View>
             </View>
+            
+            <View style={dynamicStyles.divider} />
+            
+            <Text style={[dynamicStyles.aboutText, { marginTop: 10 }]}>
+              Visit{' '}
+              <Text 
+                style={{ color: '#007AFF', textDecorationLine: 'underline' }}
+                onPress={() => Linking.openURL('https://muslimsync.com')}
+              >
+                muslimsync.com
+              </Text>
+              {' '}for more information
+            </Text>
           </View>
         </ScrollView>
       </View>
