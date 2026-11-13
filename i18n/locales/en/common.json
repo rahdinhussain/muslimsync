@@ -1,0 +1,30 @@
+{
+  "actions": {
+    "save": "Save", "cancel": "Cancel", "close": "Close", "continue": "Continue", "back": "Back",
+    "select": "Select", "search": "Search", "retry": "Try again", "refresh": "Refresh", "done": "Done",
+    "download": "Download", "delete": "Delete", "clear": "Clear", "reset": "Reset", "confirm": "Confirm",
+    "open": "Open", "more": "More", "view": "View", "edit": "Edit", "add": "Add", "remove": "Remove"
+  },
+  "navigation": {
+    "home": "Home", "quran": "Quran", "dhikr": "Dhikr", "duas": "Duas", "mosques": "Mosques",
+    "settings": "Settings", "about": "About", "help": "Help & Support", "contact": "Contact", "dashboard": "Dashboard"
+  },
+  "language": {
+    "title": "Language", "choose": "Choose your language", "description": "Choose the language for Muslim Sync.",
+    "changeLater": "You can change this later in Settings.", "savedOnDevice": "Your choice is saved on this device.",
+    "recommended": "Suggested", "current": "Current language", "saveError": "Your language could not be saved. Please try again.",
+    "contentIndependent": "Your Quran translation and prayer location have their own settings.",
+    "switchLabel": "Change language", "loading": "Preparing your language…"
+  },
+  "prayers": {
+    "fajr": "Fajr", "sunrise": "Sunrise", "dhuhr": "Dhuhr", "asr": "Asr", "maghrib": "Maghrib",
+    "isha": "Isha", "jumuah": "Jumu’ah", "athan": "Adhan", "iqama": "Iqamah", "nextPrayer": "Next prayer", "today": "Today"
+  },
+  "status": { "loading": "Loading…", "error": "Something went wrong", "noResults": "No results found", "offline": "Offline", "saving": "Saving…", "saved": "Saved", "unknown": "Unknown" },
+  "settings": { "language": "Language", "theme": "Appearance", "location": "Location", "prayerCalculation": "Prayer time calculation", "about": "About Muslim Sync", "help": "Help & Support" },
+  "quran": {
+    "arabic": "Arabic", "translation": "Translation", "transliteration": "Transliteration", "reciter": "Reciter",
+    "translationUnavailable": "A {{language}} translation is not available. The original text is shown.",
+    "translationLanguage": "Translation shown in {{language}}", "translationEdition": "Translation edition"
+  }
+}

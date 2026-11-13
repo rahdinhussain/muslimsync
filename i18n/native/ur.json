@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "مسلم سنک نماز کے اوقات، قریبی مساجد اور قبلے کی سمت معلوم کرنے کے لیے آپ کا مقام استعمال کرتا ہے۔",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "مسلم سنک نماز کے اوقات، قریبی مساجد اور قبلے کی سمت معلوم کرنے کے لیے آپ کا مقام استعمال کرتا ہے۔"
+  }
+}

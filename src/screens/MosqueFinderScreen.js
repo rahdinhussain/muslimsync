@@ -1,22 +1,19 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  TextInput,
-  Modal,
-  Linking,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Linking } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import { supabase } from '../lib/supabase';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function MosqueFinderScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const PAGE_SIZE = 20;
@@ -48,7 +45,7 @@ export default function MosqueFinderScreen() {
 
         if (error) {
           // Error loading mosques from Supabase
-          setLoadError(error.message || 'Failed to load mosques. Please try again later.');
+          setLoadError('errors.loadMosques');
           setMosques([]);
         } else {
           const mapped = (data || []).map((row) => ({
@@ -69,7 +66,7 @@ export default function MosqueFinderScreen() {
           setMosques(mapped);
         }
       } catch (err) {
-        setLoadError('Failed to load mosques. Please check your connection.');
+        setLoadError('errors.loadMosques');
         setMosques([]);
       } finally {
         setLoading(false);
@@ -221,7 +218,7 @@ export default function MosqueFinderScreen() {
       color: colors.text,
     },
     filterIconButton: {
-      marginLeft: 8,
+      marginStart: 8,
       padding: 4,
       position: 'relative',
     },
@@ -245,7 +242,7 @@ export default function MosqueFinderScreen() {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     mosqueName: {
       fontSize: 18,
@@ -256,13 +253,13 @@ export default function MosqueFinderScreen() {
     mosqueAddress: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginLeft: 5,
+      marginStart: 5,
       flex: 1,
     },
     mosquePhone: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginLeft: 5,
+      marginStart: 5,
     },
     emptyText: {
       fontSize: 16,
@@ -352,7 +349,7 @@ export default function MosqueFinderScreen() {
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 12,
-      marginLeft: 8,
+      marginStart: 8,
       backgroundColor: colors.cardSecondary,
     },
     filterButtonText: {
@@ -363,7 +360,7 @@ export default function MosqueFinderScreen() {
     filterBadge: {
       position: 'absolute',
       top: -2,
-      right: -2,
+      end: -2,
       minWidth: 16,
       height: 16,
       borderRadius: 8,
@@ -383,14 +380,12 @@ export default function MosqueFinderScreen() {
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
         <View style={dynamicStyles.container}>
           <View style={[dynamicStyles.header, { marginBottom: 0 }]}>
-            <Text style={dynamicStyles.headerTitle}>Find Mosques</Text>
-            <Text style={dynamicStyles.headerSubtitle}>
-              Loading mosques from Supabase...
-            </Text>
+            <Text style={dynamicStyles.headerTitle}>{tr("mosqueFinder.findMosques")}</Text>
+            <Text style={dynamicStyles.headerSubtitle}>{tr("mosqueFinder.loadingMosquesFromSupabase")}</Text>
           </View>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={colors.text} />
-            <Text style={dynamicStyles.emptyText}>Please wait</Text>
+            <Text style={dynamicStyles.emptyText}>{tr("mosqueFinder.pleaseWait")}</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -401,10 +396,8 @@ export default function MosqueFinderScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <View style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.headerTitle}>Find Mosques</Text>
-        <Text style={dynamicStyles.headerSubtitle}>
-          Browse and filter mosques
-        </Text>
+        <Text style={dynamicStyles.headerTitle}>{tr("mosqueFinder.findMosques")}</Text>
+        <Text style={dynamicStyles.headerSubtitle}>{tr("mosqueFinder.browseAndFilterMosques")}</Text>
       </View>
 
       {loadError && (
@@ -419,7 +412,7 @@ export default function MosqueFinderScreen() {
         <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
         <TextInput
           style={dynamicStyles.searchInput}
-          placeholder="Search mosques..."
+          placeholder={tr("mosqueFinder.searchMosques")}
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholderTextColor={colors.textTertiary}
@@ -461,9 +454,9 @@ export default function MosqueFinderScreen() {
             style={dynamicStyles.filterModalContent}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={dynamicStyles.filterTitle}>Filters</Text>
+            <Text style={dynamicStyles.filterTitle}>{tr("mosqueFinder.filters")}</Text>
 
-            <Text style={dynamicStyles.filterFieldLabel}>Country</Text>
+            <Text style={dynamicStyles.filterFieldLabel}>{tr("mosqueFinder.country")}</Text>
             <View style={{ position: 'relative' }}>
               <TouchableOpacity
                 style={dynamicStyles.dropdownField}
@@ -480,7 +473,7 @@ export default function MosqueFinderScreen() {
                       : dynamicStyles.dropdownPlaceholderText
                   }
                 >
-                  {filterCountry || 'Select country'}
+                  {filterCountry || tr("mosqueFinder.selectCountry")}
                 </Text>
                 <Ionicons
                   name={showCountryOptions ? 'chevron-up' : 'chevron-down'}
@@ -508,7 +501,7 @@ export default function MosqueFinderScreen() {
               )}
             </View>
 
-            <Text style={dynamicStyles.filterFieldLabel}>State / Province</Text>
+            <Text style={dynamicStyles.filterFieldLabel}>{tr("mosqueFinder.stateProvince")}</Text>
             <View style={{ position: 'relative' }}>
               <TouchableOpacity
                 style={dynamicStyles.dropdownField}
@@ -528,8 +521,8 @@ export default function MosqueFinderScreen() {
                   }
                 >
                   {filterCountry
-                    ? filterState || 'Select state / province'
-                    : 'Select country first'}
+                    ? filterState || tr("mosqueFinder.selectStateProvince")
+                    : tr("mosqueFinder.selectCountryFirst")}
                 </Text>
                 <Ionicons
                   name={showStateOptions ? 'chevron-up' : 'chevron-down'}
@@ -556,7 +549,7 @@ export default function MosqueFinderScreen() {
               )}
             </View>
 
-            <Text style={dynamicStyles.filterFieldLabel}>City</Text>
+            <Text style={dynamicStyles.filterFieldLabel}>{tr("mosqueFinder.city")}</Text>
             <View style={{ position: 'relative' }}>
               <TouchableOpacity
                 style={dynamicStyles.dropdownField}
@@ -576,8 +569,8 @@ export default function MosqueFinderScreen() {
                   }
                 >
                   {filterCountry && filterState
-                    ? filterCity || 'Select city'
-                    : 'Select country & state first'}
+                    ? filterCity || tr("mosqueFinder.selectCity")
+                    : tr("mosqueFinder.selectCountryStateFirst")}
                 </Text>
                 <Ionicons
                   name={showCityOptions ? 'chevron-up' : 'chevron-down'}
@@ -615,13 +608,13 @@ export default function MosqueFinderScreen() {
                   setShowCityOptions(false);
                 }}
               >
-                <Text style={dynamicStyles.filterButtonText}>Clear</Text>
+                <Text style={dynamicStyles.filterButtonText}>{tr("actions.clear", { ns: 'common' })}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={dynamicStyles.filterButton}
                 onPress={() => setShowFilterModal(false)}
               >
-                <Text style={dynamicStyles.filterButtonText}>Apply</Text>
+                <Text style={dynamicStyles.filterButtonText}>{tr("mosqueFinder.apply")}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -635,17 +628,15 @@ export default function MosqueFinderScreen() {
         {filteredMosques.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="location-outline" size={64} color={colors.textTertiary} />
-            <Text style={dynamicStyles.emptyText}>No mosques found</Text>
-            <Text style={[dynamicStyles.emptyText, { marginTop: 15, fontSize: 14, textAlign: 'center', paddingHorizontal: 30, lineHeight: 22 }]}>
-              Visit{' '}
+            <Text style={dynamicStyles.emptyText}>{tr("mosqueFinder.noMosquesFound")}</Text>
+            <Text style={[dynamicStyles.emptyText, { marginTop: 15, fontSize: 14, textAlign: 'center', paddingHorizontal: 30, lineHeight: 22 }]}>{tr("about.visit")}{' '}
               <Text 
                 style={{ color: '#007AFF', textDecorationLine: 'underline' }}
                 onPress={() => Linking.openURL('https://muslimsync.com')}
               >
                 muslimsync.com
               </Text>
-              {' '}and contact us to add your mosque
-            </Text>
+              {' '}{tr("mosqueFinder.andContactUsToAddYourMosque")}</Text>
           </View>
         ) : (
           <>
@@ -698,9 +689,7 @@ export default function MosqueFinderScreen() {
                     }, 0);
                   }}
                 >
-                  <Text style={{ color: colors.text, fontWeight: '600' }}>
-                    Load more mosques
-                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{tr("mosqueFinder.loadMoreMosques")}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -714,7 +703,7 @@ export default function MosqueFinderScreen() {
 
 const styles = StyleSheet.create({
   searchIcon: {
-    marginRight: 10,
+    marginEnd: 10,
   },
   mosquesList: {
     flex: 1,
@@ -743,7 +732,7 @@ const styles = StyleSheet.create({
   directionsButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+    marginStart: 8,
   },
   emptyContainer: {
     alignItems: 'center',

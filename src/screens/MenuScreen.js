@@ -1,48 +1,55 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function MenuScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
 
   const menuItems = [
     {
+      id: 'language',
+      title: tr('settings.language', { ns: 'common' }),
+      icon: 'language',
+      onPress: () => navigation.navigate('Language'),
+    },
+    {
       id: 1,
-      title: 'Theme',
+      title: tr("settings.theme", { ns: 'common' }),
       icon: 'color-palette',
       onPress: () => navigation.navigate('Theme'),
     },
     {
       id: 2,
-      title: 'Location',
+      title: tr("settings.location", { ns: 'common' }),
       icon: 'location',
       onPress: () => navigation.navigate('Location'),
     },
     {
       id: 3,
-      title: 'Prayer Time Calculation',
+      title: tr("settings.prayerCalculation", { ns: 'common' }),
       icon: 'time',
       onPress: () => navigation.navigate('PrayerTimeCalculation'),
     },
     {
       id: 4,
-      title: 'About',
+      title: tr("navigation.about", { ns: 'common' }),
       icon: 'information-circle',
       onPress: () => navigation.navigate('About'),
     },
     {
       id: 5,
-      title: 'Help & Support',
+      title: tr("navigation.help", { ns: 'common' }),
       icon: 'help-circle',
       onPress: () => navigation.navigate('HelpSupport'),
     },
@@ -98,7 +105,7 @@ export default function MenuScreen() {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     menuItemTitle: {
       fontSize: 18,
@@ -112,10 +119,8 @@ export default function MenuScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
         <View style={dynamicStyles.header}>
-          <Text style={dynamicStyles.headerTitle}>Settings</Text>
-          <Text style={dynamicStyles.headerSubtitle}>
-            App settings and information
-          </Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("navigation.settings", { ns: 'common' })}</Text>
+          <Text style={dynamicStyles.headerSubtitle}>{tr("menu.appSettingsAndInformation")}</Text>
         </View>
 
         <View style={styles.menuContainer}>
@@ -130,7 +135,7 @@ export default function MenuScreen() {
                 </View>
                 <Text style={dynamicStyles.menuItemTitle}>{item.title}</Text>
                 <Ionicons 
-                  name="chevron-forward" 
+                  name={isRTL ? 'chevron-back' : 'chevron-forward'}
                   size={20} 
                   color={colors.textSecondary} 
                 />

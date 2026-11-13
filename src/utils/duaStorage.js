@@ -1,6 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
+import { currentLocale } from '../i18n';
+import contentUtils from '../i18n/content-utils.cjs';
+
+const { textPrefix, duaTextKey, mergeDuaTranslation } = contentUtils;
 
 const STORAGE_KEYS = {
   DOWNLOADED_AUDIO_LIST: '@dua_downloaded_audio_list',
@@ -13,7 +17,7 @@ const AUDIO_DIR = `${FileSystem.documentDirectory}dua_audio/`;
  * Fetch all dua categories from the database
  * @returns {Promise<Array>} Array of category objects
  */
-export const fetchDuaCategories = async () => {
+export const fetchDuaCategories = async (locale = currentLocale()) => {
   try {
     const { data, error } = await supabase
       .from('dua_categories')
@@ -25,7 +29,21 @@ export const fetchDuaCategories = async () => {
       return [];
     }
 
-    return data || [];
+    // This optional table can be deployed independently of the application.
+    // Until it exists, preserve the original category instead of failing a screen.
+    let translations = [];
+    try {
+      const result = await supabase
+        .from('dua_category_translations')
+        .select('category_id, locale, name, reviewed')
+        .eq('locale', locale)
+        .eq('reviewed', true);
+      translations = result.data || [];
+    } catch { /* Missing optional table or connection: retain source categories. */ }
+    return (data || []).map((category) => {
+      const translated = (translations || []).find((entry) => entry.category_id === category.id);
+      return { ...category, name: translated?.name || category.name, isLocalized: Boolean(translated) };
+    });
   } catch (error) {
     console.error('Unexpected error fetching dua categories:', error);
     return [];
@@ -65,7 +83,7 @@ export const fetchDuaCountsByCategory = async () => {
  * @param {string} categoryId - UUID of the category
  * @returns {Promise<Array>} Array of dua objects
  */
-export const fetchDuasByCategory = async (categoryId) => {
+export const fetchDuasByCategory = async (categoryId, locale = currentLocale()) => {
   try {
     const { data, error } = await supabase
       .from('duas')
@@ -78,18 +96,18 @@ export const fetchDuasByCategory = async (categoryId) => {
       return [];
     }
 
-    // Transform database format to match app format
-    return (data || []).map((dua) => ({
-      id: dua.id,
-      title: dua.name,
-      arabic: dua.arabic_text,
-      transliteration: dua.transliteration || '',
-      translation: dua.translation || '',
-      reference: dua.reference || '',
-      audioUrl: dua.audio_url,
-      audioUrlFallback: dua.audio_url_fallback,
-      category_id: dua.category_id,
-    }));
+    if (!data?.length) return [];
+    let translations = [];
+    try {
+      const result = await supabase
+        .from('dua_translations')
+        .select('dua_id, locale, title, translation, transliteration, source, reviewed, updated_at')
+        .in('dua_id', data.map(({ id }) => id))
+        .eq('locale', locale)
+        .eq('reviewed', true);
+      translations = result.data || [];
+    } catch { /* Missing optional table or connection: retain attributed fallback. */ }
+    return data.map((dua) => mergeDuaTranslation(dua, (translations || []).find((entry) => entry.dua_id === dua.id), locale));
   } catch (error) {
     console.error('Unexpected error fetching duas by category:', error);
     return [];
@@ -101,12 +119,13 @@ export const fetchDuasByCategory = async (categoryId) => {
  * @param {string} duaId - UUID of the dua
  * @param {Object} duaData - Dua data object
  */
-export const saveDownloadedDua = async (duaId, duaData) => {
+export const saveDownloadedDua = async (duaId, duaData, locale = currentLocale()) => {
   try {
-    const key = `${STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX}${duaId}`;
-    await AsyncStorage.setItem(key, JSON.stringify(duaData));
+    const key = duaTextKey(duaId, locale);
+    await AsyncStorage.setItem(key, JSON.stringify({ ...duaData, schemaVersion: 2, requestedLocale: locale, contentLanguage: duaData.contentLanguage || 'en' }));
   } catch (error) {
     console.error('Error saving downloaded dua text:', error);
+    throw error;
   }
 };
 
@@ -115,11 +134,9 @@ export const saveDownloadedDua = async (duaId, duaData) => {
  * @param {string} duaId - UUID of the dua
  * @returns {Promise<boolean>}
  */
-export const isDuaTextDownloaded = async (duaId) => {
+export const isDuaTextDownloaded = async (duaId, locale = currentLocale()) => {
   try {
-    const key = `${STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX}${duaId}`;
-    const data = await AsyncStorage.getItem(key);
-    return data !== null;
+    return (await getDownloadedDuaText(duaId, locale)) !== null;
   } catch (error) {
     console.error('Error checking downloaded dua text:', error);
     return false;
@@ -131,15 +148,29 @@ export const isDuaTextDownloaded = async (duaId) => {
  * @param {string} duaId - UUID of the dua
  * @returns {Promise<Object|null>}
  */
-export const getDownloadedDuaText = async (duaId) => {
+export const getDownloadedDuaText = async (duaId, locale = currentLocale()) => {
   try {
-    const key = `${STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX}${duaId}`;
-    const data = await AsyncStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
+    const key = duaTextKey(duaId, locale);
+    let data = await AsyncStorage.getItem(key);
+    // Old downloads have no language marker. They were English, so never
+    // present them as a download of an Arabic/Bangla/Urdu translation.
+    if (!data && locale === 'en') data = await AsyncStorage.getItem(`${STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX}${duaId}`);
+    if (!data) return null;
+    const parsed = JSON.parse(data);
+    if (parsed.requestedLocale && parsed.requestedLocale !== locale) return null;
+    return { ...parsed, requestedLocale: locale, contentLanguage: parsed.contentLanguage || 'en' };
   } catch (error) {
     console.error('Error getting downloaded dua text:', error);
     return null;
   }
+};
+
+export const getDownloadedDuaTextIds = async (locale = currentLocale()) => {
+  const keys = await AsyncStorage.getAllKeys();
+  const prefix = textPrefix(locale);
+  const current = keys.filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
+  const legacy = locale === 'en' ? keys.filter((key) => key.startsWith(STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX) && !key.startsWith('@dua_downloaded_text_v2_')).map((key) => key.slice(STORAGE_KEYS.DOWNLOADED_TEXT_PREFIX.length)) : [];
+  return [...new Set([...current, ...legacy])];
 };
 
 /**

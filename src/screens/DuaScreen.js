@@ -1,21 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Dimensions } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   fetchDuaCategories,
+  getDownloadedDuaTextIds,
   fetchDuasByCategory,
   fetchDuaCountsByCategory,
   saveDownloadedDua,
@@ -27,21 +21,31 @@ import {
   localAudioFileExists,
   getDownloadedDuaAudioList,
 } from '../utils/duaStorage';
+import { tr, getLanguage } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 const AUDIO_DIR = `${FileSystem.documentDirectory}dua_audio/`;
 const { width } = Dimensions.get('window');
 const CARD_MARGIN = 10;
 const CARD_WIDTH = (width - 40 - CARD_MARGIN) / 2; // 40 for container padding, CARD_MARGIN for gap between cards
 
+
+
+export default function DuaScreen() {
+  const { locale, isRTL } = useAppLocale();
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+
 const DUA_CATEGORIES = [
   {
     id: 'morning',
-    title: 'Morning Duas',
+    title: tr("dua.morningDuas"),
     icon: 'sunny',
     duas: [
       {
         id: 1,
-        title: 'Morning Dua',
+        title: tr("dua.morningDua"),
         arabic: 'أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ',
         transliteration: 'Asbahna wa asbahal mulku lillah',
         translation: 'We have reached the morning and at this very time all sovereignty belongs to Allah',
@@ -50,7 +54,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 2,
-        title: 'Protection Dua',
+        title: tr("dua.protectionDua"),
         arabic: 'اللَّهُمَّ بِكَ أَصْبَحْنَا',
         transliteration: 'Allahumma bika asbahna',
         translation: 'O Allah, by You we enter the morning',
@@ -61,12 +65,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'evening',
-    title: 'Evening Duas',
+    title: tr("dua.eveningDuas"),
     icon: 'moon',
     duas: [
       {
         id: 3,
-        title: 'Evening Dua',
+        title: tr("dua.eveningDua"),
         arabic: 'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ',
         transliteration: 'Amsayna wa amsal mulku lillah',
         translation: 'We have reached the evening and at this very time all sovereignty belongs to Allah',
@@ -75,7 +79,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 4,
-        title: 'Protection Dua',
+        title: tr("dua.protectionDua"),
         arabic: 'اللَّهُمَّ بِكَ أَمْسَيْنَا',
         transliteration: 'Allahumma bika amsayna',
         translation: 'O Allah, by You we enter the evening',
@@ -86,12 +90,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'food',
-    title: 'Food & Drink',
+    title: tr("dua.foodDrink"),
     icon: 'restaurant',
     duas: [
       {
         id: 5,
-        title: 'Before Eating',
+        title: tr("dua.beforeEating"),
         arabic: 'بِسْمِ اللَّهِ',
         transliteration: 'Bismillah',
         translation: 'In the name of Allah',
@@ -100,7 +104,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 6,
-        title: 'After Eating',
+        title: tr("dua.afterEating"),
         arabic: 'الْحَمْدُ لِلَّهِ',
         transliteration: 'Alhamdulillah',
         translation: 'Praise be to Allah',
@@ -111,12 +115,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'travel',
-    title: 'Travel',
+    title: tr("dua.travel"),
     icon: 'airplane',
     duas: [
       {
         id: 7,
-        title: 'Travel Dua',
+        title: tr("dua.travelDua"),
         arabic: 'سُبْحَانَ الَّذِي سَخَّرَ لَنَا هَذَا',
         transliteration: 'Subhanalladhi sakhkhara lana hadha',
         translation: 'Glory to Him who has brought this under our control',
@@ -127,12 +131,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'sleep',
-    title: 'Sleep',
+    title: tr("dua.sleep"),
     icon: 'bed',
     duas: [
       {
         id: 8,
-        title: 'Before Sleep',
+        title: tr("dua.beforeSleep"),
         arabic: 'بِاسْمِكَ رَبِّي وَضَعْتُ جَنْبِي',
         transliteration: 'Bismika rabbi wada\'tu janbi',
         translation: 'In Your name, my Lord, I lay down my side',
@@ -141,7 +145,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 9,
-        title: 'After Waking',
+        title: tr("dua.afterWaking"),
         arabic: 'الْحَمْدُ لِلَّهِ الَّذِي أَحْيَانَا',
         transliteration: 'Alhamdulillahil ladhi ahyana',
         translation: 'Praise be to Allah who gave us life',
@@ -152,12 +156,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'rizq',
-    title: 'Dua for Rizq (Sustenance)',
+    title: tr("dua.duaForRizqSustenance"),
     icon: 'cash',
     duas: [
       {
         id: 10,
-        title: 'Dua for Sustenance',
+        title: tr("dua.duaForSustenance"),
         arabic: 'اللَّهُمَّ اكْفِنِي بِحَلاَلِكَ عَنْ حَرَامِكَ، وَأَغْنِنِي بِفَضْلِكَ عَمَّنْ سِوَاكَ',
         transliteration: 'Allahumma akfini bihalalika \'an haramika, wa aghnini bifadhlika \'amman siwaka',
         translation: 'O Allah, suffice me with what You have allowed instead of what You have forbidden, and make me independent of all others besides You',
@@ -166,7 +170,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 11,
-        title: 'Dua for Increase in Provision',
+        title: tr("dua.duaForIncreaseInProvision"),
         arabic: 'اللَّهُمَّ بَارِكْ لِي فِيمَا رَزَقْتَنِي',
         transliteration: 'Allahumma barik li fima razaqtani',
         translation: 'O Allah, bless me in what You have provided me',
@@ -175,7 +179,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 12,
-        title: 'Dua for Good Provision',
+        title: tr("dua.duaForGoodProvision"),
         arabic: 'رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ',
         transliteration: 'Rabbana atina fid-dunya hasanatan wa fil-akhirati hasanatan wa qina \'adhaban-nar',
         translation: 'Our Lord, give us good in this world and good in the Hereafter, and protect us from the punishment of the Fire',
@@ -186,12 +190,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'forgiveness',
-    title: 'Dua for Forgiveness',
+    title: tr("dua.duaForForgiveness"),
     icon: 'heart',
     duas: [
       {
         id: 13,
-        title: 'Seeking Forgiveness',
+        title: tr("dua.seekingForgiveness"),
         arabic: 'اللَّهُمَّ اغْفِرْ لِي',
         transliteration: 'Allahummaghfirli',
         translation: 'O Allah, forgive me',
@@ -200,7 +204,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 14,
-        title: 'Comprehensive Forgiveness Dua',
+        title: tr("dua.comprehensiveForgivenessDua"),
         arabic: 'رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ إِنَّكَ أَنْتَ التَّوَّابُ الرَّحِيمُ',
         transliteration: 'Rabbi ghfirli wa tub \'alayya innaka antat-tawwabur-rahim',
         translation: 'My Lord, forgive me and accept my repentance, for You are the Accepter of Repentance, the Merciful',
@@ -209,7 +213,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 15,
-        title: 'Astaghfirullah',
+        title: tr("dua.astaghfirullah"),
         arabic: 'أَسْتَغْفِرُ اللَّهَ',
         transliteration: 'Astaghfirullah',
         translation: 'I seek forgiveness from Allah',
@@ -218,7 +222,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 16,
-        title: 'Dua of Prophet Adam',
+        title: tr("dua.duaOfProphetAdam"),
         arabic: 'رَبَّنَا ظَلَمْنَا أَنْفُسَنَا وَإِنْ لَمْ تَغْفِرْ لَنَا وَتَرْحَمْنَا لَنَكُونَنَّ مِنَ الْخَاسِرِينَ',
         transliteration: 'Rabbana zalamna anfusana wa in lam taghfir lana wa tarhamna lanakunanna minal-khasirin',
         translation: 'Our Lord, we have wronged ourselves, and if You do not forgive us and have mercy upon us, we will surely be among the losers',
@@ -229,12 +233,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'health',
-    title: 'Dua for Health',
+    title: tr("dua.duaForHealth"),
     icon: 'medical',
     duas: [
       {
         id: 17,
-        title: 'Dua for Healing',
+        title: tr("dua.duaForHealing"),
         arabic: 'اللَّهُمَّ عَافِنِي فِي بَدَنِي، اللَّهُمَّ عَافِنِي فِي سَمْعِي، اللَّهُمَّ عَافِنِي فِي بَصَرِي',
         transliteration: 'Allahumma \'afini fi badani, Allahumma \'afini fi sam\'i, Allahumma \'afini fi basari',
         translation: 'O Allah, grant me health in my body, O Allah, grant me health in my hearing, O Allah, grant me health in my sight',
@@ -243,7 +247,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 18,
-        title: 'Dua for Sick Person',
+        title: tr("dua.duaForSickPerson"),
         arabic: 'اللَّهُمَّ رَبَّ النَّاسِ أَذْهِبِ الْبَأْسَ وَاشْفِ أَنْتَ الشَّافِي لَا شِفَاءَ إِلَّا شِفَاؤُكَ شِفَاءً لَا يُغَادِرُ سَقَمًا',
         transliteration: 'Allahumma rabban-nasi adhhibil-ba\'sa washfi antash-shafi la shifa\'a illa shifa\'uka shifa\'an la yughadiru saqaman',
         translation: 'O Allah, Lord of mankind, remove the harm and cure, for You are the Healer. There is no cure except Your cure, a cure that leaves no illness',
@@ -254,12 +258,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'protection',
-    title: 'Dua for Protection',
+    title: tr("dua.duaForProtection"),
     icon: 'shield',
     duas: [
       {
         id: 19,
-        title: 'Seeking Protection from Evil',
+        title: tr("dua.seekingProtectionFromEvil"),
         arabic: 'اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنْ شَرِّ نَفْسِي وَمِنْ شَرِّ كُلِّ دَابَّةٍ أَنْتَ آخِذٌ بِنَاصِيَتِهَا',
         transliteration: 'Allahumma inni a\'udhu bika min sharri nafsi wa min sharri kulli dabatin anta akhidhun binasiyatiha',
         translation: 'O Allah, I seek refuge in You from the evil of my soul and from the evil of every living creature that You hold by its forelock',
@@ -268,7 +272,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 20,
-        title: 'Morning Protection',
+        title: tr("dua.morningProtection"),
         arabic: 'أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ',
         transliteration: 'A\'udhu bikalimatillahit-tammati min sharri ma khalaq',
         translation: 'I seek refuge in the perfect words of Allah from the evil of what He has created',
@@ -279,12 +283,12 @@ const DUA_CATEGORIES = [
   },
   {
     id: 'guidance',
-    title: 'Dua for Guidance',
+    title: tr("dua.duaForGuidance"),
     icon: 'compass',
     duas: [
       {
         id: 21,
-        title: 'Dua for Guidance',
+        title: tr("dua.duaForGuidance"),
         arabic: 'رَبَّنَا لَا تُزِغْ قُلُوبَنَا بَعْدَ إِذْ هَدَيْتَنَا وَهَبْ لَنَا مِنْ لَدُنْكَ رَحْمَةً إِنَّكَ أَنْتَ الْوَهَّابُ',
         transliteration: 'Rabbana la tuzigh qulubana ba\'da idh hadaytana wa hab lana min ladunka rahmatan innaka antal-wahhab',
         translation: 'Our Lord, do not let our hearts deviate after You have guided us. Grant us Your mercy. You are indeed the Giver of all gifts',
@@ -293,7 +297,7 @@ const DUA_CATEGORIES = [
       },
       {
         id: 22,
-        title: 'Dua for Right Path',
+        title: tr("dua.duaForRightPath"),
         arabic: 'اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ',
         transliteration: 'Ihdinas-siratal-mustaqim',
         translation: 'Guide us to the straight path',
@@ -304,7 +308,6 @@ const DUA_CATEGORIES = [
   },
 ];
 
-export default function DuaScreen() {
   const { colors, isDark } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedDua, setSelectedDua] = useState(null);
@@ -325,6 +328,10 @@ export default function DuaScreen() {
   const [mergedCategories, setMergedCategories] = useState([]);
 
   useEffect(() => {
+    setSelectedCategory(null);
+    setSelectedDua(null);
+    setDbDuas({});
+    setDownloadedDuaTexts(new Set());
     loadDownloadedDuas();
     loadDownloadedDuaTexts();
     fetchCategories();
@@ -333,12 +340,12 @@ export default function DuaScreen() {
         sound.unloadAsync().catch(() => {});
       }
     };
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     // Merge hardcoded and DB categories
     mergeCategories();
-  }, [dbCategories, duaCounts]);
+  }, [dbCategories, duaCounts, locale]);
 
   useEffect(() => {
     // Stop audio when dua changes
@@ -347,14 +354,14 @@ export default function DuaScreen() {
       setSound(null);
       setIsPlaying(false);
     }
-  }, [selectedDua?.id]);
+  }, [selectedDua?.id, locale]);
 
   // Check text download status and load downloaded text when dua is selected
   useEffect(() => {
     const checkAndLoadDownloadedText = async () => {
       if (selectedDua?.id) {
         const duaIdString = String(selectedDua.id);
-        const isTextDownloaded = await isDuaTextDownloaded(duaIdString);
+        const isTextDownloaded = await isDuaTextDownloaded(duaIdString, locale);
         setDownloadedDuaTexts(prev => {
           const newSet = new Set(prev);
           if (isTextDownloaded) {
@@ -368,11 +375,14 @@ export default function DuaScreen() {
         // If text is downloaded, load it and update selectedDua
         if (isTextDownloaded) {
           try {
-            const downloadedText = await getDownloadedDuaText(duaIdString);
+            const downloadedText = await getDownloadedDuaText(duaIdString, locale);
             if (downloadedText) {
               // Update selectedDua with downloaded text (prefer downloaded over API)
               setSelectedDua(prev => ({
                 ...prev,
+                contentLanguage: downloadedText.contentLanguage,
+                requestedLocale: downloadedText.requestedLocale,
+                translationSource: downloadedText.translationSource,
                 title: downloadedText.title || prev?.title,
                 arabic: downloadedText.arabic || prev?.arabic,
                 transliteration: downloadedText.transliteration || prev?.transliteration,
@@ -389,7 +399,7 @@ export default function DuaScreen() {
       }
     };
     checkAndLoadDownloadedText();
-  }, [selectedDua?.id]);
+  }, [selectedDua?.id, locale]);
 
   const loadDownloadedDuas = async () => {
     try {
@@ -403,10 +413,10 @@ export default function DuaScreen() {
   const loadDownloadedDuaTexts = async () => {
     try {
       // Check all downloaded audio duas to see if text is also downloaded
-      const audioList = await getDownloadedDuaAudioList();
+      const audioList = await getDownloadedDuaTextIds(locale);
       const textSet = new Set();
       for (const duaId of audioList) {
-        const isTextDownloaded = await isDuaTextDownloaded(duaId);
+        const isTextDownloaded = await isDuaTextDownloaded(duaId, locale);
         if (isTextDownloaded) {
           textSet.add(duaId);
         }
@@ -421,9 +431,10 @@ export default function DuaScreen() {
     try {
       setLoadingCategories(true);
       const [categories, counts] = await Promise.all([
-        fetchDuaCategories(),
+        fetchDuaCategories(locale),
         fetchDuaCountsByCategory(),
       ]);
+      if (localeRef.current !== locale) return;
       setDbCategories(categories);
       setDuaCounts(counts);
     } catch (error) {
@@ -446,7 +457,7 @@ export default function DuaScreen() {
         // Use DB category data but keep hardcoded ID for reference
         return {
           id: hardcodedCat.id, // Keep hardcoded ID for UI consistency
-          title: dbCat.name || hardcodedCat.title,
+          title: dbCat.isLocalized ? dbCat.name : hardcodedCat.title,
           icon: dbCat.icon || hardcodedCat.icon,
           duas: [], // Will be fetched from DB when clicked
           dbId: dbCat.id, // Store DB UUID for queries
@@ -522,14 +533,15 @@ export default function DuaScreen() {
       // First, try to load downloaded duas from local storage
       let downloadedDuas = [];
       try {
-        const downloadedAudioList = await getDownloadedDuaAudioList();
+        const downloadedAudioList = await getDownloadedDuaTextIds(locale);
         for (const duaId of downloadedAudioList) {
-          const downloadedText = await getDownloadedDuaText(duaId);
+          const downloadedText = await getDownloadedDuaText(duaId, locale);
           if (downloadedText) {
             // Filter by category_id if available, or include if category_id matches
             const downloadedCategoryId = downloadedText.category_id;
             if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
               downloadedDuas.push({
+                ...downloadedText,
                 id: downloadedText.id,
                 title: downloadedText.title,
                 arabic: downloadedText.arabic,
@@ -552,7 +564,7 @@ export default function DuaScreen() {
       // Try to fetch from API/database
       let apiDuas = [];
       try {
-        apiDuas = await fetchDuasByCategory(categoryId);
+        apiDuas = await fetchDuasByCategory(categoryId, locale);
       } catch (apiError) {
         // API fetch failed - use downloaded duas if available
         console.log('Error fetching duas from API:', apiError);
@@ -577,12 +589,16 @@ export default function DuaScreen() {
       
       // Merge API duas with downloaded duas
       // Prefer downloaded text if available, but use API for audio URLs and other metadata
+      if (localeRef.current !== locale) return;
       const mergedDuas = apiDuas.map(apiDua => {
         const downloadedDua = downloadedDuas.find(d => d.id === apiDua.id || String(d.id) === String(apiDua.id));
         if (downloadedDua) {
           // Use downloaded text but keep API audio URLs
           return {
             ...apiDua,
+            contentLanguage: downloadedDua.contentLanguage,
+            requestedLocale: downloadedDua.requestedLocale,
+            translationSource: downloadedDua.translationSource,
             title: downloadedDua.title || apiDua.title,
             arabic: downloadedDua.arabic || apiDua.arabic,
             transliteration: downloadedDua.transliteration || apiDua.transliteration,
@@ -623,17 +639,19 @@ export default function DuaScreen() {
         [categoryId]: mergedDuas,
       }));
     } catch (error) {
+      if (localeRef.current !== locale) return;
       // Error fetching duas - try to use downloaded ones as fallback
       try {
-        const downloadedAudioList = await getDownloadedDuaAudioList();
+        const downloadedAudioList = await getDownloadedDuaTextIds(locale);
         const fallbackDuas = [];
         for (const duaId of downloadedAudioList) {
-          const downloadedText = await getDownloadedDuaText(duaId);
+          const downloadedText = await getDownloadedDuaText(duaId, locale);
           if (downloadedText) {
             // Filter by category_id if available
             const downloadedCategoryId = downloadedText.category_id;
             if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
               fallbackDuas.push({
+                ...downloadedText,
                 id: downloadedText.id,
                 title: downloadedText.title,
                 arabic: downloadedText.arabic,
@@ -669,7 +687,7 @@ export default function DuaScreen() {
       }
       
       // No downloaded duas available - show error
-      Alert.alert('Error', 'Failed to load duas. Please check your internet connection.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToLoadDuasPleaseCheckYourInternet"));
       setSelectedCategory({
         ...category,
         duas: [],
@@ -712,7 +730,7 @@ export default function DuaScreen() {
       }
 
       if (!dua.audioUrl) {
-        Alert.alert('No Audio', 'Audio is not available for this dua.');
+        Alert.alert(tr("dua.noAudio"), tr("dua.audioIsNotAvailableForThisDua"));
         return;
       }
 
@@ -785,7 +803,7 @@ export default function DuaScreen() {
       setIsLoading(false);
     } catch (error) {
       // Error playing audio
-      Alert.alert('Error', 'Failed to play audio. Please try again.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToPlayAudioPleaseTryAgain"));
       setIsLoading(false);
       setIsPlaying(false);
     }
@@ -793,14 +811,14 @@ export default function DuaScreen() {
 
   const downloadAudio = async (dua) => {
     if (!dua.audioUrl) {
-      Alert.alert('No Audio', 'Audio is not available for this dua.');
+      Alert.alert(tr("dua.noAudio"), tr("dua.audioIsNotAvailableForThisDua"));
       return;
     }
 
     const duaIdString = String(dua.id);
     const isDownloaded = await isDuaAudioDownloaded(duaIdString);
     if (isDownloaded) {
-      Alert.alert('Already Downloaded', 'This dua audio is already downloaded.');
+      Alert.alert(tr("dua.alreadyDownloaded"), tr("dua.thisDuaAudioIsAlreadyDownloaded"));
       return;
     }
 
@@ -873,13 +891,13 @@ export default function DuaScreen() {
         // Automatically download text as well
         await downloadDuaText(dua, true); // true = silent (no alert)
         
-        Alert.alert('Success', 'Dua audio and text downloaded successfully!');
+        Alert.alert(tr("dua.success"), tr("dua.duaAudioAndTextDownloadedSuccessfully"));
       } else {
         throw new Error('Download failed - file not saved properly');
       }
     } catch (error) {
       // Error downloading audio
-      Alert.alert('Error', 'Failed to download audio. Please check your internet connection.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToDownloadAudioPleaseCheckYourInternet"));
     } finally {
       setDownloadingDua(null);
     }
@@ -898,6 +916,9 @@ export default function DuaScreen() {
       
       // Save dua text data with category_id for filtering
       const duaData = {
+        contentLanguage: dua.contentLanguage || 'en',
+        translationSource: dua.translationSource || null,
+        requestedLocale: locale,
         id: duaIdString,
         title: dua.title,
         arabic: dua.arabic,
@@ -907,18 +928,18 @@ export default function DuaScreen() {
         category_id: categoryId, // Save category_id for filtering
       };
       
-      await saveDownloadedDua(duaIdString, duaData);
+      await saveDownloadedDua(duaIdString, duaData, locale);
       
       // Update state
       setDownloadedDuaTexts(prev => new Set([...prev, duaIdString]));
       
       if (!silent) {
-        Alert.alert('Success', 'Dua text downloaded successfully!');
+        Alert.alert(tr("dua.success"), tr("dua.duaTextDownloadedSuccessfully"));
       }
     } catch (error) {
       // Error downloading dua text
       if (!silent) {
-        Alert.alert('Error', 'Failed to download dua text.');
+        Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToDownloadDuaText"));
       }
     } finally {
       setDownloadingDuaText(null);
@@ -1010,6 +1031,7 @@ export default function DuaScreen() {
       marginBottom: 10,
     },
     duaArabic: {
+      writingDirection: 'rtl',
       fontSize: 24,
       color: colors.text,
       textAlign: 'right',
@@ -1017,6 +1039,7 @@ export default function DuaScreen() {
       fontFamily: 'System',
     },
     duaTransliteration: {
+      writingDirection: 'ltr',
       fontSize: 16,
       color: colors.textSecondary,
       fontStyle: 'italic',
@@ -1088,10 +1111,10 @@ export default function DuaScreen() {
       borderRadius: 10,
     },
     audioButtonLeft: {
-      marginRight: 5,
+      marginEnd: 5,
     },
     audioButtonRight: {
-      marginLeft: 5,
+      marginStart: 5,
     },
     audioButtonText: {
       fontSize: 14,
@@ -1108,7 +1131,7 @@ export default function DuaScreen() {
               onPress={() => setSelectedDua(null)}
               style={styles.backButton}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
+              <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={dynamicStyles.duaTitle}>{selectedDua.title}</Text>
           </View>
@@ -1116,11 +1139,15 @@ export default function DuaScreen() {
             <View style={dynamicStyles.duaCard}>
               <Text style={dynamicStyles.duaArabic}>{selectedDua.arabic}</Text>
               <Text style={dynamicStyles.duaTransliteration}>{selectedDua.transliteration}</Text>
-              <Text style={dynamicStyles.duaTranslation}>{selectedDua.translation}</Text>
+              {locale !== (selectedDua.contentLanguage || 'en') && selectedDua.translation ? (
+                <Text style={{ color: colors.textSecondary, marginTop: 8 }}>{tr('dua.translationFallback', { language: getLanguage(locale).nativeName })}</Text>
+              ) : null}
+              <Text style={[dynamicStyles.duaTranslation, { writingDirection: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'rtl' : 'ltr', textAlign: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'right' : 'left' }]}>{selectedDua.translation || tr('dua.translationUnavailable')}</Text>
+              {selectedDua.translationSource ? <Text style={{ color: colors.textSecondary, marginTop: 8 }}>{tr('dua.translationSource', { source: selectedDua.translationSource })}</Text> : null}
               
               {selectedDua.reference && (
                 <View style={styles.referenceContainer}>
-                  <Text style={[styles.referenceLabel, { color: colors.textSecondary }]}>Reference:</Text>
+                  <Text style={[styles.referenceLabel, { color: colors.textSecondary }]}>{tr("dua.reference")}</Text>
                   <Text style={[styles.referenceText, { color: colors.text }]}>{selectedDua.reference}</Text>
                 </View>
               )}
@@ -1140,8 +1167,8 @@ export default function DuaScreen() {
                       color={colors.text} 
                     />
                   )}
-                  <Text style={[styles.audioButtonText, { color: colors.text, marginLeft: 8 }]}>
-                    {isLoading ? 'Loading...' : isPlaying ? 'Pause' : 'Play'}
+                  <Text style={[styles.audioButtonText, { color: colors.text, marginStart: 8 }]}>
+                    {isLoading ? tr("status.loading", { ns: 'common' }) : isPlaying ? tr("dua.pause") : tr("dua.play")}
                   </Text>
                 </TouchableOpacity>
 
@@ -1159,12 +1186,12 @@ export default function DuaScreen() {
                       color={colors.text} 
                     />
                   )}
-                  <Text style={[styles.audioButtonText, { color: colors.text, marginLeft: 8 }]}>
+                  <Text style={[styles.audioButtonText, { color: colors.text, marginStart: 8 }]}>
                     {downloadingDua === selectedDua.id 
-                      ? 'Downloading...' 
+                      ? tr("dua.downloading")
                       : downloadedDuas.includes(String(selectedDua.id)) 
-                        ? 'Audio Downloaded' 
-                        : 'Download Audio'}
+                        ? tr("dua.audioDownloaded")
+                        : tr("dua.downloadAudio")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1184,12 +1211,12 @@ export default function DuaScreen() {
                       color={colors.text} 
                     />
                   )}
-                  <Text style={[styles.audioButtonText, { color: colors.text, marginLeft: 8 }]}>
+                  <Text style={[styles.audioButtonText, { color: colors.text, marginStart: 8 }]}>
                     {downloadingDuaText === selectedDua.id 
-                      ? 'Downloading...' 
+                      ? tr("dua.downloading")
                       : downloadedDuaTexts.has(String(selectedDua.id)) 
-                        ? 'Text Downloaded' 
-                        : 'Download Text'}
+                        ? tr("dua.textDownloaded")
+                        : tr("dua.downloadText")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1209,7 +1236,7 @@ export default function DuaScreen() {
               onPress={() => setSelectedCategory(null)}
               style={styles.backButton}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
+              <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={dynamicStyles.categoryTitle}>{selectedCategory.title}</Text>
           </View>
@@ -1217,7 +1244,7 @@ export default function DuaScreen() {
             {loadingDuas ? (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <ActivityIndicator size="large" color={colors.text} />
-                <Text style={{ marginTop: 10, color: colors.textSecondary }}>Loading duas...</Text>
+                <Text style={{ marginTop: 10, color: colors.textSecondary }}>{tr("dua.loadingDuas")}</Text>
               </View>
             ) : selectedCategory.duas && selectedCategory.duas.length > 0 ? (
               selectedCategory.duas.map((dua) => (
@@ -1234,9 +1261,7 @@ export default function DuaScreen() {
             ) : (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <Ionicons name="document-text-outline" size={48} color={colors.textSecondary} />
-                <Text style={{ marginTop: 10, color: colors.textSecondary, textAlign: 'center' }}>
-                  No duas found in this category
-                </Text>
+                <Text style={{ marginTop: 10, color: colors.textSecondary, textAlign: 'center' }}>{tr("dua.noDuasFoundInThisCategory")}</Text>
               </View>
             )}
           </ScrollView>
@@ -1249,17 +1274,15 @@ export default function DuaScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
         <View style={dynamicStyles.header}>
-          <Text style={dynamicStyles.headerTitle}>Duas</Text>
-          <Text style={dynamicStyles.headerSubtitle}>
-            Supplications for daily life
-          </Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("navigation.duas", { ns: 'common' })}</Text>
+          <Text style={dynamicStyles.headerSubtitle}>{tr("dua.supplicationsForDailyLife")}</Text>
         </View>
 
         <View style={styles.categoriesContainer}>
           {loadingCategories && mergedCategories.length === 0 && (
             <View style={{ width: '100%', padding: 20, alignItems: 'center' }}>
               <ActivityIndicator size="large" color={colors.text} />
-              <Text style={{ marginTop: 10, color: colors.textSecondary }}>Loading categories...</Text>
+              <Text style={{ marginTop: 10, color: colors.textSecondary }}>{tr("dua.loadingCategories")}</Text>
             </View>
           )}
           {mergedCategories.map((category) => (
@@ -1272,9 +1295,7 @@ export default function DuaScreen() {
                 <Ionicons name={category.icon} size={32} color={colors.text} />
               </View>
               <Text style={dynamicStyles.categoryTitle}>{category.title}</Text>
-              <Text style={dynamicStyles.categoryCount}>
-                {category.duaCount !== undefined ? category.duaCount : (category.duas ? category.duas.length : '...')} Duas
-              </Text>
+              <Text style={dynamicStyles.categoryCount}>{tr("dua.valueDuas", { value1: category.duaCount !== undefined ? category.duaCount : category.duas ? category.duas.length : '...' })}</Text>
             </TouchableOpacity>
           ))}
         </View>

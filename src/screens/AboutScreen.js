@@ -1,18 +1,18 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function AboutScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
 
@@ -36,7 +36,7 @@ export default function AboutScreen() {
     },
     backButton: {
       padding: 5,
-      marginRight: 10,
+      marginEnd: 10,
     },
     headerTitle: {
       fontSize: 24,
@@ -105,7 +105,7 @@ export default function AboutScreen() {
     },
     featureText: {
       fontSize: 16,
-      marginLeft: 12,
+      marginStart: 12,
       color: colors.textSecondary,
     },
   });
@@ -118,9 +118,9 @@ export default function AboutScreen() {
             onPress={() => navigation.goBack()}
             style={dynamicStyles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={dynamicStyles.headerTitle}>About Muslim Sync</Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("about.aboutMuslimSync")}</Text>
         </View>
 
         <ScrollView style={dynamicStyles.content} showsVerticalScrollIndicator={true}>
@@ -130,77 +130,64 @@ export default function AboutScreen() {
             </View>
             
             <Text style={dynamicStyles.appName}>Muslim Sync</Text>
-            <Text style={dynamicStyles.version}>Version 1.0.0</Text>
+            <Text style={dynamicStyles.version}>{tr("about.version100")}</Text>
             
             <View style={dynamicStyles.divider} />
             
-            <Text style={dynamicStyles.sectionTitle}>Our Mission</Text>
-            <Text style={dynamicStyles.aboutText}>
-              Our goal is to reduce the need for multiple tools and help you get everything in one convenient app. 
-              Muslim Sync brings together all the essential Islamic tools you need for your daily spiritual journey.
-            </Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("about.ourMission")}</Text>
+            <Text style={dynamicStyles.aboutText}>{tr("about.ourGoalIsToReduceTheNeedFor")}</Text>
             
             <View style={dynamicStyles.divider} />
             
-            <Text style={dynamicStyles.sectionTitle}>100% Ad-Free</Text>
-            <Text style={dynamicStyles.aboutText}>
-              We believe in providing a clean, distraction-free experience. Muslim Sync is completely ad-free, 
-              allowing you to focus on what matters most - your connection with Allah.
-            </Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("about.100AdFree")}</Text>
+            <Text style={dynamicStyles.aboutText}>{tr("about.weBelieveInProvidingACleanDistractionFree")}</Text>
             
             <View style={dynamicStyles.divider} />
             
-            <Text style={dynamicStyles.sectionTitle}>Your Feedback Matters</Text>
-            <Text style={dynamicStyles.aboutText}>
-              Everyone is welcome to give feedback about what they want to be added. We value your input and 
-              suggestions to make Muslim Sync better for the entire Muslim community.
-            </Text>
-            <Text style={dynamicStyles.inshaAllah}>
-              InshaAllah, we will continue to add features based on your needs.
-            </Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("about.yourFeedbackMatters")}</Text>
+            <Text style={dynamicStyles.aboutText}>{tr("about.everyoneIsWelcomeToGiveFeedbackAboutWhat")}</Text>
+            <Text style={dynamicStyles.inshaAllah}>{tr("about.inshaallahWeWillContinueToAddFeaturesBased")}</Text>
             
             <View style={dynamicStyles.divider} />
             
-            <Text style={dynamicStyles.sectionTitle}>Features</Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("about.features")}</Text>
             <View style={dynamicStyles.featuresList}>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Accurate Prayer Times</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.accuratePrayerTimes")}</Text>
               </View>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Complete Quran with Translations</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.completeQuranWithTranslations")}</Text>
               </View>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Dhikr Counter</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.dhikrCounter")}</Text>
               </View>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Daily Duas</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.dailyDuas")}</Text>
               </View>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Mosque Finder</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.mosqueFinder")}</Text>
               </View>
               <View style={dynamicStyles.featureItem}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                <Text style={dynamicStyles.featureText}>Offline Support</Text>
+                <Text style={dynamicStyles.featureText}>{tr("about.offlineSupport")}</Text>
               </View>
             </View>
             
             <View style={dynamicStyles.divider} />
             
-            <Text style={[dynamicStyles.aboutText, { marginTop: 10 }]}>
-              Visit{' '}
+            <Text style={[dynamicStyles.aboutText, { marginTop: 10 }]}>{tr("about.visit")}{' '}
               <Text 
                 style={{ color: '#007AFF', textDecorationLine: 'underline' }}
                 onPress={() => Linking.openURL('https://muslimsync.com')}
               >
                 muslimsync.com
               </Text>
-              {' '}for more information
-            </Text>
+              {' '}{tr("about.forMoreInformation")}</Text>
           </View>
         </ScrollView>
       </View>

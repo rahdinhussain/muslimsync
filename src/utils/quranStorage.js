@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { currentLocale, tr } from '../i18n';
+import quranSources from '../i18n/quran-sources.cjs';
+const { translationStorageKey } = quranSources;
 import * as FileSystem from 'expo-file-system/legacy';
 
 const STORAGE_KEYS = {
@@ -17,13 +20,23 @@ export const RECITERS = [
   { id: 'arabic_english_r2', name: 'Arabic & English Recitation' },
 ];
 
+
+// Personal names remain as published; descriptive UI labels follow app language.
+export const getReciterName = (reciterOrId) => {
+  const reciter = typeof reciterOrId === 'string' ? RECITERS.find(({ id }) => id === reciterOrId) : reciterOrId;
+  if (!reciter) return tr('quran.reciter', { ns: 'common' });
+  return reciter.id === 'arabic_english_r2' ? tr('quranSettingsDrawer.arabicEnglishRecitation') : reciter.name;
+};
+
 // Available Translations
 export const TRANSLATIONS = [
   { id: 'en.sahih', name: 'Sahih International (English)' },
   { id: 'en.yusufali', name: 'Yusuf Ali (English)' },
-  { id: 'en.khattab', name: 'Clear Quran by Mustafa Khattab (English)' },
+  { id: 'en.khattab', name: 'Clear Quran by Mustafa Khattab — Allah Edition (English)' },
   { id: 'en.pickthall', name: 'Pickthall (English)' },
   { id: 'en.ahmedali', name: 'Ahmed Ali (English)' },
+  { id: 'bn.bengali', name: 'মুহিউদ্দীন খান (বাংলা)' },
+  { id: 'bn.hoque', name: 'জহুরুল হক (বাংলা)' },
   { id: 'ur.maududi', name: 'Maududi (Urdu)' },
   { id: 'fr.hamidullah', name: 'Hamidullah (French)' },
   { id: 'es.borneo', name: 'Borneo (Spanish)' },
@@ -132,9 +145,16 @@ export const saveSelectedTranslation = async (translationId) => {
 };
 
 // Get selected translation
-export const getSelectedTranslation = async () => {
+export const getSelectedTranslation = async (preferredLocale = currentLocale()) => {
   try {
-    return await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TRANSLATION);
+    const existing = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TRANSLATION);
+    if (existing) return existing;
+    const initializedKey = '@quran_translation_initialized_v1';
+    if (await AsyncStorage.getItem(initializedKey)) return null;
+    const suggested = { en: 'en.sahih', bn: 'bn.bengali', ur: 'ur.maududi' }[preferredLocale] || null;
+    if (suggested) await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TRANSLATION, suggested);
+    await AsyncStorage.setItem(initializedKey, 'true');
+    return suggested;
   } catch (error) {
     return null;
   }
@@ -207,7 +227,7 @@ export const isBookmarked = async (surahNumber, verseNumber) => {
 // Get downloaded translation data for a surah
 export const getSurahTranslation = async (surahNumber, translationId) => {
   try {
-    const key = `@quran_translation_${translationId}`;
+    const key = translationStorageKey(translationId);
     const translationData = await AsyncStorage.getItem(key);
     if (!translationData) return null;
     
@@ -224,7 +244,9 @@ export const isTranslationDownloaded = async (translationId) => {
   try {
     const downloaded = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_TRANSLATIONS);
     const translations = downloaded ? JSON.parse(downloaded) : [];
-    return translations.includes(translationId);
+    if (!translations.includes(translationId)) return false;
+    const data = await AsyncStorage.getItem(translationStorageKey(translationId));
+    return Boolean(data && Object.keys(JSON.parse(data)).length);
   } catch (error) {
     return false;
   }

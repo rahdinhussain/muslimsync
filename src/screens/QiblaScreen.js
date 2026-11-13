@@ -1,10 +1,15 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, AppState } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, Animated, TouchableOpacity, AppState } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { Magnetometer } from 'expo-sensors';
 import { useTheme } from '../hooks/useTheme';
 import { getCachedLocation, hasValidCachedLocation } from '../utils/locationCache';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 const KAABA_LAT = 21.4225;
 const KAABA_LON = 39.8262;
@@ -54,6 +59,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 export default function QiblaScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors } = useTheme();
   const [location, setLocation] = useState(null);
   const [qiblaBearing, setQiblaBearing] = useState(null);
@@ -89,7 +96,7 @@ export default function QiblaScreen() {
         setErrorMsg(null);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Unable to get your location. Please try again.');
+      setErrorMsg('errors.getLocation');
     } finally {
       setIsRefreshingLocation(false);
     }
@@ -200,10 +207,8 @@ export default function QiblaScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.container, { backgroundColor: colors.surface }]}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Qibla Direction</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Hold your phone flat and rotate until the arrow points to the top to face the Qibla.
-          </Text>
+          <Text style={[styles.title, { color: colors.text }]}>{tr("qibla.qiblaDirection")}</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{tr("qibla.holdYourPhoneFlatAndRotateUntilThe")}</Text>
         </View>
 
         {/* Refresh Location Button */}
@@ -219,18 +224,18 @@ export default function QiblaScreen() {
               color={colors.text} 
             />
             <Text style={[styles.refreshButtonText, { color: colors.text }]}>
-              {isRefreshingLocation ? 'Updating Location...' : 'Refresh Location'}
+              {isRefreshingLocation ? tr("qibla.updatingLocation") : tr("qibla.refreshLocation")}
             </Text>
           </TouchableOpacity>
         )}
 
         {errorMsg ? (
           <View style={styles.center}>
-            <Text style={[styles.errorText, { color: colors.textSecondary }]}>{errorMsg}</Text>
+            <Text style={[styles.errorText, { color: colors.textSecondary }]}>{tr(errorMsg)}</Text>
           </View>
         ) : !location || qiblaBearing == null ? (
           <View style={styles.center}>
-            <Text style={{ color: colors.textSecondary }}>Calculating Qibla direction...</Text>
+            <Text style={{ color: colors.textSecondary }}>{tr("qibla.calculatingQiblaDirection")}</Text>
           </View>
         ) : (
           <>
@@ -245,13 +250,13 @@ export default function QiblaScreen() {
                 ]}
               >
                 {/* North Label */}
-                <Text style={[styles.compassLabel, styles.northLabel, { color: colors.text }]}>N</Text>
+                <Text style={[styles.compassLabel, styles.northLabel, { color: colors.text }]}>{tr("qibla.n")}</Text>
                 {/* South Label */}
-                <Text style={[styles.compassLabel, styles.southLabel, { color: colors.textSecondary }]}>S</Text>
+                <Text style={[styles.compassLabel, styles.southLabel, { color: colors.textSecondary }]}>{tr("qibla.s")}</Text>
                 {/* East Label */}
-                <Text style={[styles.compassLabel, styles.eastLabel, { color: colors.textSecondary }]}>E</Text>
+                <Text style={[styles.compassLabel, styles.eastLabel, { color: colors.textSecondary }]}>{tr("qibla.e")}</Text>
                 {/* West Label */}
-                <Text style={[styles.compassLabel, styles.westLabel, { color: colors.textSecondary }]}>W</Text>
+                <Text style={[styles.compassLabel, styles.westLabel, { color: colors.textSecondary }]}>{tr("qibla.w")}</Text>
                 
                 {/* Qibla Arrow - rotates relative to compass */}
                 <Animated.View
@@ -263,21 +268,15 @@ export default function QiblaScreen() {
                   <View style={styles.arrowShape}>
                     <Ionicons name="arrow-up" size={40} color={colors.primary || '#007AFF'} />
                   </View>
-                  <Text style={[styles.arrowText, { color: colors.primary || '#007AFF' }]}>Qibla</Text>
+                  <Text style={[styles.arrowText, { color: colors.primary || '#007AFF' }]}>{tr("prayerTimes.qibla")}</Text>
                 </Animated.View>
               </Animated.View>
             </View>
 
             <View style={styles.infoContainer}>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • For best accuracy, hold the phone flat (screen facing the sky).
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Keep it away from metal objects or magnets.
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Slowly rotate yourself until the Qibla arrow points straight up.
-              </Text>
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>{tr("qibla.forBestAccuracyHoldThePhoneFlatScreen")}</Text>
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>{tr("qibla.keepItAwayFromMetalObjectsOrMagnets")}</Text>
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>{tr("qibla.slowlyRotateYourselfUntilTheQiblaArrowPoints")}</Text>
             </View>
           </>
         )}
@@ -319,6 +318,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   compassContainer: {
+    direction: 'ltr',
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

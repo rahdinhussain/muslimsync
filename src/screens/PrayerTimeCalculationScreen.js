@@ -1,41 +1,43 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { tr, formatNumber } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 // Prayer time calculation methods
-const PRAYER_METHODS = [
-  { id: 0, name: 'Shia Ithna-Ansari', fajr: '15.0°', isha: '15.0°' },
-  { id: 1, name: 'University of Islamic Sciences, Karachi', fajr: '18.0°', isha: '18.0°' },
-  { id: 2, name: 'Islamic Society of North America (ISNA)', fajr: '15.0°', isha: '15.0°' },
-  { id: 3, name: 'Muslim World League (MWL)', fajr: '18.0°', isha: '17.0°' },
-  { id: 4, name: 'Umm Al-Qura University, Makkah', fajr: '18.5°', isha: '90 min' },
-  { id: 5, name: 'Egyptian General Authority of Survey', fajr: '19.5°', isha: '17.5°' },
-  { id: 6, name: 'Institute of Geophysics, University of Tehran', fajr: '17.7°', isha: '14.0°' },
-  { id: 7, name: 'Gulf Region', fajr: '19.5°', isha: '19.5°' },
-  { id: 8, name: 'Kuwait', fajr: '18.0°', isha: '17.5°' },
-  { id: 9, name: 'Qatar', fajr: '18.0°', isha: '18.0°' },
-  { id: 10, name: 'Majlis Ugama Islam Singapura (MUIS)', fajr: '20.0°', isha: '18.0°' },
-  { id: 11, name: 'Union des Organisations Islamiques de France (UOIF)', fajr: '12.0°', isha: '12.0°' },
-  { id: 12, name: 'Diyanet İşleri Başkanlığı, Turkey', fajr: '18.0°', isha: '17.0°' },
-  { id: 13, name: 'Spiritual Administration of Muslims of Russia', fajr: '16.0°', isha: '15.0°' },
-  { id: 14, name: 'Moonsighting Committee Worldwide (MCCW)', fajr: '18.0°', isha: '18.0°' },
-  { id: 15, name: 'Dubai (Custom)', fajr: '18.2°', isha: '18.2°' },
-];
+
 
 const STORAGE_KEY = '@prayer_calculation_method';
 
 export default function PrayerTimeCalculationScreen() {
+  const { locale, isRTL } = useAppLocale();
+
+const PRAYER_METHODS = [
+  { id: 0, name: tr("prayerTimeCalculation.shiaIthnaAnsari"), fajr: '15.0°', isha: '15.0°' },
+  { id: 1, name: tr("prayerTimeCalculation.universityOfIslamicSciencesKarachi"), fajr: '18.0°', isha: '18.0°' },
+  { id: 2, name: tr("prayerTimeCalculation.islamicSocietyOfNorthAmericaIsna"), fajr: '15.0°', isha: '15.0°' },
+  { id: 3, name: tr("prayerTimeCalculation.muslimWorldLeagueMwl"), fajr: '18.0°', isha: '17.0°' },
+  { id: 4, name: tr("prayerTimeCalculation.ummAlQuraUniversityMakkah"), fajr: '18.5°', isha: 90 },
+  { id: 5, name: tr("prayerTimeCalculation.egyptianGeneralAuthorityOfSurvey"), fajr: '19.5°', isha: '17.5°' },
+  { id: 6, name: tr("prayerTimeCalculation.instituteOfGeophysicsUniversityOfTehran"), fajr: '17.7°', isha: '14.0°' },
+  { id: 7, name: tr("prayerTimeCalculation.gulfRegion"), fajr: '19.5°', isha: '19.5°' },
+  { id: 8, name: tr("prayerTimeCalculation.kuwait"), fajr: '18.0°', isha: '17.5°' },
+  { id: 9, name: tr("prayerTimeCalculation.qatar"), fajr: '18.0°', isha: '18.0°' },
+  { id: 10, name: tr("prayerTimeCalculation.majlisUgamaIslamSingapuraMuis"), fajr: '20.0°', isha: '18.0°' },
+  { id: 11, name: tr("prayerTimeCalculation.unionDesOrganisationsIslamiquesDeFranceUoif"), fajr: '12.0°', isha: '12.0°' },
+  { id: 12, name: tr("prayerTimeCalculation.diyanetLeriBaKanlTurkey"), fajr: '18.0°', isha: '17.0°' },
+  { id: 13, name: tr("prayerTimeCalculation.spiritualAdministrationOfMuslimsOfRussia"), fajr: '16.0°', isha: '15.0°' },
+  { id: 14, name: tr("prayerTimeCalculation.moonsightingCommitteeWorldwideMccw"), fajr: '18.0°', isha: '18.0°' },
+  { id: 15, name: tr("prayerTimeCalculation.dubaiCustom"), fajr: '18.2°', isha: '18.2°' },
+];
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const [selectedMethod, setSelectedMethod] = useState(2); // Default: ISNA (method 2)
@@ -59,9 +61,9 @@ export default function PrayerTimeCalculationScreen() {
     try {
       setSelectedMethod(methodId);
       await AsyncStorage.setItem(STORAGE_KEY, methodId.toString());
-      Alert.alert('Success', 'Prayer time calculation method updated. Please refresh prayer times to see the changes.');
+      Alert.alert(tr("dua.success"), tr("prayerTimeCalculation.prayerTimeCalculationMethodUpdatedPleaseRefreshPrayer"));
     } catch (error) {
-      Alert.alert('Error', 'Failed to save prayer method preference.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimeCalculation.failedToSavePrayerMethodPreference"));
     }
   };
 
@@ -85,7 +87,7 @@ export default function PrayerTimeCalculationScreen() {
     },
     backButton: {
       padding: 5,
-      marginRight: 10,
+      marginEnd: 10,
     },
     headerTitle: {
       fontSize: 24,
@@ -125,7 +127,7 @@ export default function PrayerTimeCalculationScreen() {
       color: colors.textSecondary,
     },
     radioButton: {
-      marginLeft: 10,
+      marginStart: 10,
     },
   });
 
@@ -137,9 +139,9 @@ export default function PrayerTimeCalculationScreen() {
             onPress={() => navigation.goBack()}
             style={dynamicStyles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={dynamicStyles.headerTitle}>Prayer Time Calculation</Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("settings.prayerCalculation", { ns: 'common' })}</Text>
         </View>
 
         <ScrollView style={dynamicStyles.content} showsVerticalScrollIndicator={true}>
@@ -151,9 +153,7 @@ export default function PrayerTimeCalculationScreen() {
             >
               <View style={dynamicStyles.optionContent}>
                 <Text style={dynamicStyles.optionTitle}>{method.name}</Text>
-                <Text style={dynamicStyles.optionDetails}>
-                  Fajr: {method.fajr} | Isha: {method.isha}
-                </Text>
+                <Text style={dynamicStyles.optionDetails}>{tr("prayerTimeCalculation.fajrValueIshaValue", { value1: `${formatNumber(parseFloat(method.fajr), { minimumFractionDigits: 1 })}°`, value2: typeof method.isha === 'number' ? formatNumber(method.isha, { style: 'unit', unit: 'minute', unitDisplay: 'short' }) : `${formatNumber(parseFloat(method.isha), { minimumFractionDigits: 1 })}°` })}</Text>
               </View>
               <Ionicons
                 name={selectedMethod === method.id ? 'radio-button-on' : 'radio-button-off'}

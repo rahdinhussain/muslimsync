@@ -1,16 +1,8 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Animated,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Dimensions, Animated } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -18,10 +10,15 @@ import { format, addDays } from 'date-fns';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCachedLocation } from '../utils/locationCache';
+import { tr, prayerLabel, formatDate, formatPrayerTime, formatNumber } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 const { width } = Dimensions.get('window');
 
 export default function PrayerTimesScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
   const [location, setLocation] = useState(null);
@@ -142,7 +139,7 @@ export default function PrayerTimesScreen() {
         }
       } else {
         // Fallback if cache fails
-        Alert.alert('Error', 'Failed to get location. Using default location.');
+        Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToGetLocationUsingDefaultLocation"));
         setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
         
         const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
@@ -151,7 +148,7 @@ export default function PrayerTimesScreen() {
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to get location. Using default location.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToGetLocationUsingDefaultLocation"));
       setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
       
       // Only fetch city name if not already cached (first time)
@@ -211,7 +208,7 @@ export default function PrayerTimesScreen() {
         throw new Error('Failed to fetch prayer times');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to fetch prayer times. Please try again.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToFetchPrayerTimesPleaseTryAgain"));
       // Set default times for demo
       setPrayerTimes({
         Fajr: '05:30',
@@ -292,21 +289,12 @@ export default function PrayerTimesScreen() {
   };
 
   const formatArabicDate = (date) => {
-    const arabicDays = [
-      'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
-    ];
-    
-    // Islamic calendar months in English transliteration
-    const hijriMonths = [
-      'Muharram', 'Safar', 'Rabi\' al-Awwal', 'Rabi\' al-Thani', 
-      'Jumada al-Ula', 'Jumada al-Thani', 'Rajab', 
-      'Sha\'ban', 'Ramadan', 'Shawwal', 
-      'Dhul Qa\'dah', 'Dhul Hijjah'
-    ];
-    
+    const dayName = formatDate(date, { weekday: 'long' });
+    const hijriMonths = Array.from({ length: 12 }, (_, index) => tr(`calendar.month${index + 1}`));
+
     // Use Hijri date from API if available
     if (hijriDate) {
-      const day = arabicDays[date.getDay()];
+      const day = dayName;
       
       // Aladhan API structure:
       // hijriDate.day is the day as string (e.g., "16")
@@ -346,7 +334,7 @@ export default function PrayerTimesScreen() {
       }
       
       if (dayNum && monthName && year) {
-        return `${day}, ${dayNum} ${monthName} ${year}`;
+        return `${day}, ${formatNumber(dayNum)} ${monthName} ${formatNumber(year, { useGrouping: false })}`;
       }
     }
     
@@ -370,10 +358,10 @@ export default function PrayerTimesScreen() {
     const hijriDay = l3 - Math.floor((709 * hijriMonth) / 24);
     const hijriYear = 30 * n + j - 30;
     
-    const day = arabicDays[date.getDay()];
+    const day = dayName;
     const monthName = hijriMonths[hijriMonth - 1];
     
-    return `${day}, ${hijriDay} ${monthName} ${hijriYear}`;
+    return `${day}, ${formatNumber(hijriDay)} ${monthName} ${formatNumber(hijriYear, { useGrouping: false })}`;
   };
 
   const nextPrayer = getNextPrayer();
@@ -425,35 +413,35 @@ export default function PrayerTimesScreen() {
   const quickActions = [
     {
       id: 1,
-      title: 'Read Quran',
+      title: tr("prayerTimes.readQuran"),
       icon: 'book',
       color: colors.text,
       screen: 'Quran',
     },
     {
       id: 2,
-      title: 'Dhikr',
+      title: tr("navigation.dhikr", { ns: 'common' }),
       icon: 'heart',
       color: colors.text,
       screen: 'Dhikr',
     },
     {
       id: 3,
-      title: 'Qibla',
+      title: tr("prayerTimes.qibla"),
       icon: 'compass',
       color: colors.text,
       screen: 'Qibla',
     },
     {
       id: 4,
-      title: 'Duas',
+      title: tr("navigation.duas", { ns: 'common' }),
       icon: 'hand-left',
       color: colors.text,
       screen: 'Dua',
     },
     {
       id: 5,
-      title: 'Find Mosques',
+      title: tr("mosqueFinder.findMosques"),
       icon: 'location',
       color: colors.text,
       screen: 'Mosques',
@@ -531,7 +519,7 @@ export default function PrayerTimesScreen() {
     },
     nextPrayerLeft: {
       flex: 1,
-      marginRight: 15,
+      marginEnd: 15,
     },
     nextPrayerRight: {
       flex: 1,
@@ -540,14 +528,14 @@ export default function PrayerTimesScreen() {
     cardDateText: {
       fontSize: 14,
       color: colors.textSecondary,
-      textAlign: 'right',
+      textAlign: isRTL ? 'left' : 'right',
       marginBottom: 4,
     },
     cityText: {
       fontSize: 12,
       color: colors.textSecondary,
       marginBottom: 8,
-      textAlign: 'right',
+      textAlign: isRTL ? 'left' : 'right',
     },
     cardDateControls: {
       flexDirection: 'row',
@@ -595,7 +583,7 @@ export default function PrayerTimesScreen() {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     prayerName: {
       fontSize: 18,
@@ -627,7 +615,7 @@ export default function PrayerTimesScreen() {
       color: colors.text,
       fontSize: 16,
       fontWeight: '600',
-      marginLeft: 10,
+      marginStart: 10,
     },
     sectionTitle: {
       fontSize: 22,
@@ -691,7 +679,7 @@ export default function PrayerTimesScreen() {
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
         <View style={dynamicStyles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={dynamicStyles.loadingText}>Loading prayer times...</Text>
+          <Text style={dynamicStyles.loadingText}>{tr("mosqueSchedule.loadingPrayerTimes")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -705,14 +693,14 @@ export default function PrayerTimesScreen() {
         <View style={dynamicStyles.nextPrayerCard}>
           <View style={dynamicStyles.nextPrayerTopRow}>
             <View style={dynamicStyles.nextPrayerLeft}>
-              <Text style={dynamicStyles.nextPrayerLabel}>Next Prayer</Text>
-              <Text style={dynamicStyles.nextPrayerName}>{nextPrayer.name}</Text>
+              <Text style={dynamicStyles.nextPrayerLabel}>{tr("prayers.nextPrayer", { ns: 'common' })}</Text>
+              <Text style={dynamicStyles.nextPrayerName}>{prayerLabel(nextPrayer.name)}</Text>
               <Text style={dynamicStyles.nextPrayerTime}>
-                {format(nextPrayer.time, 'h:mm a')}
+                {formatDate(nextPrayer.time, { hour: 'numeric', minute: '2-digit' })}
               </Text>
             </View>
             <View style={dynamicStyles.nextPrayerRight}>
-              <Text style={dynamicStyles.cardDateText}>{format(selectedDate, 'EEEE, MMMM d, yyyy')}</Text>
+              <Text style={dynamicStyles.cardDateText}>{formatDate(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
               {cityName && (
                 <Text style={dynamicStyles.cityText}>{cityName}</Text>
               )}
@@ -721,19 +709,19 @@ export default function PrayerTimesScreen() {
                   onPress={() => setSelectedDate(addDays(selectedDate, -1))}
                   style={dynamicStyles.cardDateButton}
                 >
-                  <Ionicons name="chevron-back" size={20} color={colors.text} />
+                  <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={colors.text} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSelectedDate(new Date())}
                   style={dynamicStyles.todayButton}
                 >
-                  <Text style={dynamicStyles.todayButtonText}>Today</Text>
+                  <Text style={dynamicStyles.todayButtonText}>{tr("prayers.today", { ns: 'common' })}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSelectedDate(addDays(selectedDate, 1))}
                   style={dynamicStyles.cardDateButton}
                 >
-                  <Ionicons name="chevron-forward" size={20} color={colors.text} />
+                  <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.text} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -754,9 +742,9 @@ export default function PrayerTimesScreen() {
               <Ionicons name={prayer.icon} size={28} color={prayer.color} />
             </View>
             <View style={styles.prayerInfo}>
-              <Text style={dynamicStyles.prayerName}>{prayer.name}</Text>
+              <Text style={dynamicStyles.prayerName}>{prayerLabel(prayer.name)}</Text>
               <Text style={dynamicStyles.prayerTime}>
-                {formatTime(prayerTimes?.[key])}
+                {formatPrayerTime(prayerTimes?.[key])}
               </Text>
             </View>
           </Animated.View>
@@ -768,11 +756,11 @@ export default function PrayerTimesScreen() {
         onPress={fetchPrayerTimes}
       >
         <Ionicons name="refresh" size={20} color={colors.text} />
-        <Text style={dynamicStyles.refreshButtonText}>Refresh Times</Text>
+        <Text style={dynamicStyles.refreshButtonText}>{tr("prayerTimes.refreshTimes")}</Text>
       </TouchableOpacity>
 
       <View style={styles.quickActionsContainer}>
-        <Text style={dynamicStyles.sectionTitle}>Quick Actions</Text>
+        <Text style={dynamicStyles.sectionTitle}>{tr("prayerTimes.quickActions")}</Text>
         <View style={styles.quickActionsGrid}>
           {quickActions.map((action) => (
             <TouchableOpacity
@@ -790,41 +778,33 @@ export default function PrayerTimesScreen() {
       </View>
 
       <View style={styles.featuresContainer}>
-        <Text style={dynamicStyles.sectionTitle}>Features</Text>
+        <Text style={dynamicStyles.sectionTitle}>{tr("about.features")}</Text>
         <View style={dynamicStyles.featureCard}>
           <Ionicons name="moon" size={24} color={colors.text} />
           <View style={styles.featureContent}>
-            <Text style={dynamicStyles.featureTitle}>Accurate Prayer Times</Text>
-            <Text style={dynamicStyles.featureDescription}>
-              Get precise prayer times based on your location
-            </Text>
+            <Text style={dynamicStyles.featureTitle}>{tr("about.accuratePrayerTimes")}</Text>
+            <Text style={dynamicStyles.featureDescription}>{tr("prayerTimes.getPrecisePrayerTimesBasedOnYourLocation")}</Text>
           </View>
         </View>
         <View style={dynamicStyles.featureCard}>
           <Ionicons name="book" size={24} color={colors.text} />
           <View style={styles.featureContent}>
-            <Text style={dynamicStyles.featureTitle}>Complete Quran</Text>
-            <Text style={dynamicStyles.featureDescription}>
-              Read and listen to the Holy Quran
-            </Text>
+            <Text style={dynamicStyles.featureTitle}>{tr("prayerTimes.completeQuran")}</Text>
+            <Text style={dynamicStyles.featureDescription}>{tr("prayerTimes.readAndListenToTheHolyQuran")}</Text>
           </View>
         </View>
         <View style={dynamicStyles.featureCard}>
           <Ionicons name="heart" size={24} color={colors.text} />
           <View style={styles.featureContent}>
-            <Text style={dynamicStyles.featureTitle}>Dhikr Counter</Text>
-            <Text style={dynamicStyles.featureDescription}>
-              Track your daily remembrance of Allah
-            </Text>
+            <Text style={dynamicStyles.featureTitle}>{tr("about.dhikrCounter")}</Text>
+            <Text style={dynamicStyles.featureDescription}>{tr("prayerTimes.trackYourDailyRemembranceOfAllah")}</Text>
           </View>
         </View>
         <View style={dynamicStyles.featureCard}>
           <Ionicons name="location" size={24} color={colors.text} />
           <View style={styles.featureContent}>
-            <Text style={dynamicStyles.featureTitle}>Mosque Finder</Text>
-            <Text style={dynamicStyles.featureDescription}>
-              Discover mosques near you with prayer schedules
-            </Text>
+            <Text style={dynamicStyles.featureTitle}>{tr("about.mosqueFinder")}</Text>
+            <Text style={dynamicStyles.featureDescription}>{tr("prayerTimes.discoverMosquesNearYouWithPrayerSchedules")}</Text>
           </View>
         </View>
       </View>
@@ -865,7 +845,7 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   featureContent: {
-    marginLeft: 15,
+    marginStart: 15,
     flex: 1,
   },
 });
