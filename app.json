@@ -21,7 +21,13 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Muslim Sync uses your location to calculate accurate prayer times, find nearby mosques, and determine the Qibla direction.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Muslim Sync uses your location to calculate accurate prayer times, find nearby mosques, and determine the Qibla direction."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Muslim Sync uses your location to calculate accurate prayer times, find nearby mosques, and determine the Qibla direction.",
+        "CFBundleLocalizations": [
+          "en",
+          "bn",
+          "ar",
+          "ur"
+        ]
       }
     },
     "android": {
@@ -36,10 +42,7 @@
         "ACCESS_COARSE_LOCATION",
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS"
-      ],
-      "compileSdkVersion": 34,
-      "targetSdkVersion": 34,
-      "buildToolsVersion": "34.0.0"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -52,12 +55,39 @@
         }
       ],
       "expo-av",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "en",
+              "bn",
+              "ar",
+              "ur"
+            ],
+            "android": [
+              "en",
+              "bn",
+              "ar",
+              "ur"
+            ]
+          },
+          "supportsRTL": true,
+          "allowDynamicLocaleChangesAndroid": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "e5b0eec2-e349-4dea-b1cc-52a101c164d6"
       }
+    },
+    "locales": {
+      "en": "./i18n/native/en.json",
+      "bn": "./i18n/native/bn.json",
+      "ar": "./i18n/native/ar.json",
+      "ur": "./i18n/native/ur.json"
     }
   }
 }

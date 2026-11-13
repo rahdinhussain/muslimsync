@@ -1,17 +1,23 @@
+import { LocalizedText as Text } from './LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 const STORAGE_KEYS = {
   DOWNLOADED_AUDIO: '@quran_downloaded_audio',
 };
 
 export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const [sound, setSound] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -202,23 +208,23 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
           
           if (status.error) {
             console.error('Playback error:', status.error);
-            setError('Playback error');
+            setError('audioPlayer.playbackError');
             setIsPlaying(false);
             setIsPaused(false);
           }
         } else if (status.error) {
           console.error('Audio loading error:', status.error);
-          setError('Failed to load audio');
+          setError('audioPlayer.failedToLoadAudio');
           setIsPlaying(false);
           setIsPaused(false);
         }
       });
     } catch (error) {
       console.error('Error playing audio:', error);
-      let errorMessage = `Failed to load audio: ${error.message || 'Unknown error'}`;
+      let errorMessage = 'errors.playAudio';
       if (reciterId === 'arabic_english_r2') {
         if (error.message && (error.message.includes('timeout') || error.message.includes('-1003'))) {
-          errorMessage = 'Cannot reach audio server. Please check your internet connection or download the audio for offline use. If this persists, the custom domain may need time to propagate or there may be a DNS issue.';
+          errorMessage = 'errors.playAudio';
         }
       }
       setError(errorMessage);
@@ -313,7 +319,7 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 12,
+      marginEnd: 12,
     },
     text: {
       flex: 1,
@@ -374,16 +380,14 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
           />
         )}
       </TouchableOpacity>
-      <View style={{ flex: 1, marginLeft: 12 }}>
+      <View style={{ flex: 1, marginStart: 12 }}>
         <Text style={dynamicStyles.text}>
-          {isPlaying && !isPaused ? 'Playing audio...' : isPaused ? 'Paused' : 'Tap to play audio'}
+          {isPlaying && !isPaused ? tr("audioPlayer.playingAudio") : isPaused ? tr("audioPlayer.paused") : tr("audioPlayer.tapToPlayAudio")}
         </Text>
         {isUsingDownloaded && !error && (
-          <Text style={[dynamicStyles.errorText, { color: colors.textSecondary, fontSize: 11 }]}>
-            Playing from offline
-          </Text>
+          <Text style={[dynamicStyles.errorText, { color: colors.textSecondary, fontSize: 11 }]}>{tr("audioPlayer.playingFromOffline")}</Text>
         )}
-        {error && <Text style={dynamicStyles.errorText}>{error}</Text>}
+        {error && <Text style={dynamicStyles.errorText}>{tr(error)}</Text>}
         {(isPlaying || isPaused) && playbackDuration > 0 && (
           <>
             <Slider
@@ -405,7 +409,7 @@ export default function AudioPlayer({ surahNumber, reciterId, onComplete }) {
         )}
       </View>
       {(isPlaying || isPaused) && (
-        <TouchableOpacity onPress={replayAudio} style={{ marginLeft: 8 }}>
+        <TouchableOpacity onPress={replayAudio} style={{ marginStart: 8 }}>
           <Ionicons name="reload" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       )}

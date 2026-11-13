@@ -2,6 +2,8 @@
 
 This guide will walk you through building, testing, and publishing your app to the App Store and Google Play Store.
 
+For the multilingual release's standalone device testing, use [docs/TEST_BUILDS.md](docs/TEST_BUILDS.md). The `preview` profile includes the JavaScript bundle; `development` uses Metro. The current production Android profile explicitly produces an APK, so configure an AAB before following the Google Play upload steps below. Verify current account requirements and version numbers before a store release.
+
 ## Prerequisites
 
 1. **EAS CLI installed** (already in your package.json)
@@ -59,19 +61,18 @@ eas build --profile development --platform ios
 eas build --profile development --platform android
 ```
 
-**Note**: Development builds allow you to test on your device. They'll create a build you can install via TestFlight (iOS) or direct download (Android).
+**Note**: Development builds use the Metro development server. Android receives an installable APK; iOS receives an ad hoc build for registered devices. TestFlight requires a separate store build and upload workflow.
 
 ---
 
 ## Step 5: Install Development Build on Your Phone
 
-### iOS (via TestFlight):
+### iOS (internal distribution):
 
-1. After the build completes, you'll get a TestFlight link
-2. Open the link on your iPhone
-3. Install TestFlight app if needed
-4. Accept the invitation and install the app
-5. Run `expo start --dev-client` on your computer to connect
+1. Register your test iPhone before building and include it in the provisioning profile.
+2. After the build completes, open its EAS build-page installation link on that iPhone.
+3. Install the internal build.
+4. Run `npx expo start --dev-client` on your computer to connect.
 
 ### Android:
 

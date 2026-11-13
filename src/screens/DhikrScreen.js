@@ -1,21 +1,24 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../hooks/useTheme';
+import { tr, formatNumber } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
+
+
+
+export default function DhikrScreen() {
+  const { locale, isRTL } = useAppLocale();
 
 const DHIKR_CATEGORIES = [
   {
     id: 'morning',
-    title: 'Morning Dhikr',
+    title: tr("dhikr.morningDhikr"),
     color: '#FFA500',
     dhikrs: [
       { id: 1, text: 'Subhanallah', arabic: 'سُبْحَانَ اللَّهِ', count: 33 },
@@ -26,7 +29,7 @@ const DHIKR_CATEGORIES = [
   },
   {
     id: 'evening',
-    title: 'Evening Dhikr',
+    title: tr("dhikr.eveningDhikr"),
     color: '#4B0082',
     dhikrs: [
       { id: 5, text: 'Subhanallah', arabic: 'سُبْحَانَ اللَّهِ', count: 33 },
@@ -37,7 +40,7 @@ const DHIKR_CATEGORIES = [
   },
   {
     id: 'general',
-    title: 'General Dhikr',
+    title: tr("dhikr.generalDhikr"),
     color: '#000000',
     dhikrs: [
       { id: 9, text: 'Subhanallah wa Bihamdihi', arabic: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ', count: 100 },
@@ -47,7 +50,6 @@ const DHIKR_CATEGORIES = [
   },
 ];
 
-export default function DhikrScreen() {
   const { colors, isDark } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedDhikr, setSelectedDhikr] = useState(null);
@@ -160,7 +162,7 @@ export default function DhikrScreen() {
       fontSize: 22,
       fontWeight: 'bold',
       color: colors.text,
-      marginLeft: 15,
+      marginStart: 15,
     },
     dhikrCard: {
       flexDirection: 'row',
@@ -184,6 +186,7 @@ export default function DhikrScreen() {
       marginBottom: 5,
     },
     dhikrCardArabic: {
+      writingDirection: 'rtl',
       fontSize: 16,
       color: colors.text,
       marginBottom: 5,
@@ -196,7 +199,7 @@ export default function DhikrScreen() {
       fontSize: 24,
       fontWeight: 'bold',
       color: colors.text,
-      marginRight: 10,
+      marginEnd: 10,
     },
     dhikrHeader: {
       padding: 20,
@@ -211,6 +214,7 @@ export default function DhikrScreen() {
       marginBottom: 5,
     },
     dhikrHeaderArabic: {
+      writingDirection: 'rtl',
       fontSize: 18,
       color: colors.textSecondary,
     },
@@ -270,7 +274,7 @@ export default function DhikrScreen() {
     resetButtonText: {
       fontSize: 16,
       fontWeight: '600',
-      marginLeft: 8,
+      marginStart: 8,
     },
   });
 
@@ -289,7 +293,7 @@ export default function DhikrScreen() {
             onPress={() => setSelectedDhikr(null)}
             style={styles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.dhikrHeaderInfo}>
             <Text style={dynamicStyles.dhikrHeaderTitle}>{selectedDhikr.text}</Text>
@@ -299,8 +303,8 @@ export default function DhikrScreen() {
 
         <View style={styles.counterContainer}>
           <View style={dynamicStyles.counterCircle}>
-            <Text style={dynamicStyles.counterText}>{currentCount}</Text>
-            <Text style={dynamicStyles.counterTarget}>/ {selectedDhikr.count}</Text>
+            <Text style={dynamicStyles.counterText}>{formatNumber(currentCount)}</Text>
+            <Text style={dynamicStyles.counterTarget}>/ {formatNumber(selectedDhikr.count)}</Text>
           </View>
           <View style={dynamicStyles.progressBar}>
             <View
@@ -318,16 +322,14 @@ export default function DhikrScreen() {
             onPress={() => incrementCount(selectedDhikr.id)}
           >
             <Ionicons name="add" size={32} color={colors.text} />
-            <Text style={dynamicStyles.counterButtonText}>Count</Text>
+            <Text style={dynamicStyles.counterButtonText}>{tr("dhikr.count")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={dynamicStyles.resetButton}
             onPress={() => resetCount(selectedDhikr.id)}
           >
             <Ionicons name="refresh" size={24} color={colors.text} />
-            <Text style={[dynamicStyles.resetButtonText, { color: colors.text }]}>
-              Reset
-            </Text>
+            <Text style={[dynamicStyles.resetButtonText, { color: colors.text }]}>{tr("actions.reset", { ns: 'common' })}</Text>
           </TouchableOpacity>
         </View>
         </View>
@@ -349,10 +351,10 @@ export default function DhikrScreen() {
             onPress={() => setSelectedCategory(null)}
             style={styles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={dynamicStyles.categoryHeaderTitle}>
-            {selectedCategory.title}
+            {DHIKR_CATEGORIES.find(category => category.id === selectedCategory.id)?.title || selectedCategory.title}
           </Text>
         </View>
 
@@ -368,13 +370,11 @@ export default function DhikrScreen() {
                 <View style={styles.dhikrCardContent}>
                   <Text style={dynamicStyles.dhikrCardText}>{dhikr.text}</Text>
                   <Text style={dynamicStyles.dhikrCardArabic}>{dhikr.arabic}</Text>
-                  <Text style={dynamicStyles.dhikrCardCount}>
-                    Target: {dhikr.count}
-                  </Text>
+                  <Text style={dynamicStyles.dhikrCardCount}>{tr("dhikr.targetValue", { value1: dhikr.count })}</Text>
                 </View>
                 <View style={styles.dhikrCardProgress}>
-                  <Text style={dynamicStyles.dhikrCardCurrentCount}>{currentCount}</Text>
-                  <Ionicons name="chevron-forward" size={24} color={colors.text} />
+                  <Text style={dynamicStyles.dhikrCardCurrentCount}>{formatNumber(currentCount)}</Text>
+                  <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={24} color={colors.text} />
                 </View>
               </TouchableOpacity>
             );
@@ -389,10 +389,8 @@ export default function DhikrScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.headerTitle}>Dhikr</Text>
-        <Text style={dynamicStyles.headerSubtitle}>
-          Remember Allah and count your blessings
-        </Text>
+        <Text style={dynamicStyles.headerTitle}>{tr("navigation.dhikr", { ns: 'common' })}</Text>
+        <Text style={dynamicStyles.headerSubtitle}>{tr("dhikr.rememberAllahAndCountYourBlessings")}</Text>
       </View>
 
       <View style={styles.categoriesContainer}>
@@ -411,9 +409,7 @@ export default function DhikrScreen() {
               <Ionicons name="heart" size={32} color={colors.text} />
             </View>
             <Text style={dynamicStyles.categoryTitle}>{category.title}</Text>
-            <Text style={dynamicStyles.categoryCount}>
-              {category.dhikrs.length} Dhikrs
-            </Text>
+            <Text style={dynamicStyles.categoryCount}>{tr("dhikr.valueDhikrs", { value1: category.dhikrs.length })}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -442,7 +438,7 @@ const styles = StyleSheet.create({
   },
   dhikrHeaderInfo: {
     flex: 1,
-    marginLeft: 15,
+    marginStart: 15,
   },
   counterContainer: {
     alignItems: 'center',

@@ -1,29 +1,22 @@
+import { LocalizedSafeAreaView as SafeAreaView } from './LocalizedPrimitives';
+import { LocalizedText as Text } from './LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-  Switch,
-  Alert,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, TouchableOpacity, Modal, ScrollView, Switch, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { RECITERS, TRANSLATIONS, getDownloadedSurahs, markSurahDownloaded, saveSurahVerses, isSurahDownloaded, isTranslationDownloaded } from '../utils/quranStorage';
+import { RECITERS, TRANSLATIONS, getReciterName, getDownloadedSurahs, markSurahDownloaded, saveSurahVerses, isSurahDownloaded, isTranslationDownloaded } from '../utils/quranStorage';
 import { SURAHS } from '../data/surahs';
+import { tr, formatNumber } from '../i18n';
+import quranSources from '../i18n/quran-sources.cjs';
+const { getTranslationEndpoints, translationStorageKey } = quranSources;
+import { useAppLocale } from '../context/LocaleContext';
 
-const ARABIC_FONTS = [
-  { id: 'system', name: 'System Default' },
-  { id: 'uthmani', name: 'Uthmani Script' },
-  { id: 'naskh', name: 'Naskh' },
-  { id: 'nastaliq', name: 'Nastaliq' },
-];
+
+
 
 const STORAGE_KEYS = {
   ARABIC_FONT: '@quran_arabic_font',
@@ -35,6 +28,15 @@ const STORAGE_KEYS = {
 };
 
 export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange }) {
+  const { locale, isRTL } = useAppLocale();
+
+const ARABIC_FONTS = [
+  { id: 'system', name: tr("quranSettingsDrawer.systemDefault") },
+  { id: 'uthmani', name: tr("quranSettingsDrawer.uthmaniScript") },
+  { id: 'naskh', name: tr("quranSettingsDrawer.naskh") },
+  { id: 'nastaliq', name: tr("quranSettingsDrawer.nastaliq") },
+];
+
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [selectedFont, setSelectedFont] = useState('system');
@@ -42,6 +44,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
   const [selectedTranslation, setSelectedTranslation] = useState(null);
   const [selectedReciter, setSelectedReciter] = useState(null);
   const [downloadedTranslations, setDownloadedTranslations] = useState([]);
+  const [hasLegacyTranslations, setHasLegacyTranslations] = useState(false);
   const [downloadedAudio, setDownloadedAudio] = useState([]);
   const [downloadingArabic, setDownloadingArabic] = useState(false);
   const [downloadedArabic, setDownloadedArabic] = useState(false);
@@ -147,6 +150,8 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       if (translation) setSelectedTranslation(translation);
       if (reciter) setSelectedReciter(reciter);
       
+      const keys = await AsyncStorage.getAllKeys();
+      setHasLegacyTranslations(keys.some((key) => key.startsWith('@quran_translation_') && !key.startsWith('@quran_translation_v2_') && key !== '@quran_translation_initialized_v1' && !keys.includes(translationStorageKey(key.slice('@quran_translation_'.length)))));
       // Check which translations are actually downloaded (have data in storage)
       const actuallyDownloaded = [];
       if (downloadedTrans) {
@@ -156,7 +161,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           for (const transId of transList) {
             const isDownloaded = await isTranslationDownloaded(transId);
             // Also check if translation data exists in storage
-            const key = `@quran_translation_${transId}`;
+            const key = translationStorageKey(transId);
             const translationData = await AsyncStorage.getItem(key);
             if (translationData) {
               try {
@@ -209,7 +214,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
   const handleTranslationToggle = async (translationId, value) => {
     if (value) {
       // Check if translation is actually downloaded offline
-      const key = `@quran_translation_${translationId}`;
+      const key = translationStorageKey(translationId);
       const translationData = await AsyncStorage.getItem(key);
       const isActuallyDownloaded = translationData ? (() => {
         try {
@@ -237,6 +242,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       // Turn off - deselect translation
       if (translationId === selectedTranslation) {
         setSelectedTranslation(null);
+        await AsyncStorage.setItem('@quran_translation_initialized_v1', 'true');
         await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_TRANSLATION);
       }
 
@@ -252,42 +258,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
   };
 
   const fetchTranslationFromAPI = async (surahNumber, translationId) => {
-    // Map translation IDs to different API formats
-    const translationResourceMap = {
-      'en.sahih': { alquran: 'en.sahih', qurancom: '131', github: 'eng-muhammadtaqiudd' },
-      'en.pickthall': { alquran: 'en.pickthall', qurancom: '19', github: 'eng-marmadukepickth' },
-      'en.yusufali': { alquran: 'en.yusufali', qurancom: '20', github: 'eng-yusufaliorig' },
-      'en.ahmedali': { alquran: 'en.ahmedali', qurancom: '163', github: 'eng-ahmedali' },
-      'en.khattab': { alquran: 'en.khattab', qurancom: null, github: 'eng-mustafakhattaba' },
-      'ur.maududi': { alquran: 'ur.maududi', qurancom: '95', github: 'urd-abulaalamaududi' },
-      'fr.hamidullah': { alquran: 'fr.hamidullah', qurancom: '50', github: 'fra-muhammadhamidul' },
-      'es.borneo': { alquran: 'es.borneo', qurancom: '142', github: 'spa-raulgonzalezbor' },
-    };
-
-    const resources = translationResourceMap[translationId] || { alquran: translationId, qurancom: null, github: translationId };
-    
-    // Use GitHub CDN first (most reliable)
-    const apiEndpoints = [
-      {
-        url: `https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/${resources.github}/${surahNumber}.json`,
-        format: 'github',
-      },
-      {
-        url: `https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/${resources.github}/${surahNumber}.json`,
-        format: 'github',
-      },
-      {
-        url: `https://api.alquran.cloud/v1/surah/${surahNumber}/editions/${resources.alquran}`,
-        format: 'alquran',
-      },
-    ];
-    
-    if (resources.qurancom) {
-      apiEndpoints.push({
-        url: `https://api.quran.com/api/v4/quran/translations/${resources.qurancom}?chapter_number=${surahNumber}`,
-        format: 'qurancom',
-      });
-    }
+    const apiEndpoints = getTranslationEndpoints(translationId, surahNumber);
 
     let lastError = null;
     
@@ -390,10 +361,10 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
     setDownloadingTranslations(prev => ({ ...prev, [translationId]: { current: 0, total: SURAHS.length } }));
 
     Alert.alert(
-      'Download Translation',
-      `This will download ${TRANSLATIONS.find(t => t.id === translationId)?.name || translationId} for all 114 surahs. This may take some time.`,
+      tr("quranSettingsDrawer.downloadTranslation"),
+      tr("quranSettingsDrawer.thisWillDownloadValueForAll114Surahs", { value1: TRANSLATIONS.find(t => t.id === translationId)?.name || translationId }),
       [
-        { text: 'Cancel', onPress: () => {
+        { text: tr("actions.cancel", { ns: 'common' }), onPress: () => {
           setDownloadingTranslations(prev => {
             const updated = { ...prev };
             delete updated[translationId];
@@ -401,7 +372,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           });
         }},
         {
-          text: 'Download',
+          text: tr("actions.download", { ns: 'common' }),
           onPress: async () => {
             try {
               const translationData = {};
@@ -432,7 +403,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
               // Save translation data to AsyncStorage only after all surahs are processed
               if (successCount > 0) {
-                const key = `@quran_translation_${translationId}`;
+                const key = translationStorageKey(translationId);
                 await AsyncStorage.setItem(key, JSON.stringify(translationData));
                 
                 // Mark as downloaded
@@ -453,18 +424,18 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
               // Show success/error alert only once at the end
               if (successCount === SURAHS.length && failCount === 0) {
-                Alert.alert('Success', `Translation downloaded successfully for all ${successCount} surahs!`);
+                Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.translationDownloadedSuccessfullyForAllValueSurahs", { value1: successCount }));
               } else if (successCount > 0) {
                 Alert.alert(
-                  'Partial Success',
-                  `Downloaded ${successCount} out of ${SURAHS.length} surahs. ${failCount} failed.`
+                  tr("quranSettingsDrawer.partialSuccess"),
+                  tr("quranSettingsDrawer.downloadedValueOutOfValueSurahsValueFailed", { value1: successCount, value2: SURAHS.length, value3: failCount })
                 );
               } else {
-                Alert.alert('Error', 'Failed to download translation. Please check your internet connection and try again.');
+                Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadTranslationPleaseCheckYourInternet"));
               }
             } catch (error) {
               console.error('Download error:', error);
-              Alert.alert('Error', 'Failed to download translation. Please check your internet connection.');
+              Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadTranslationPleaseCheckYourInternet_d68d7"));
               setDownloadingTranslations(prev => {
                 const updated = { ...prev };
                 delete updated[translationId];
@@ -500,12 +471,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const cancelAudioDownload = (reciterId) => {
     Alert.alert(
-      'Cancel Download',
-      'Are you sure you want to cancel this download? Progress will be lost.',
+      tr("quranSettingsDrawer.cancelDownload"),
+      tr("quranSettingsDrawer.areYouSureYouWantToCancelThis"),
       [
-        { text: 'No', style: 'cancel' },
+        { text: tr("quranSettingsDrawer.no"), style: 'cancel' },
         {
-          text: 'Yes, Cancel',
+          text: tr("quranSettingsDrawer.yesCancel"),
           style: 'destructive',
           onPress: () => {
             // Clear download state
@@ -519,7 +490,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
               delete updated[reciterId];
               return updated;
             });
-            Alert.alert('Download Cancelled', 'The download has been cancelled.');
+            Alert.alert(tr("quranSettingsDrawer.downloadCancelled"), tr("quranSettingsDrawer.theDownloadHasBeenCancelled"));
           },
         },
       ]
@@ -527,21 +498,21 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
   };
 
   const handleDeleteAudio = async (reciterId) => {
-    const reciterName = RECITERS.find(r => r.id === reciterId)?.name || reciterId;
+    const reciterName = getReciterName(reciterId);
     Alert.alert(
-      'Delete Audio Recitation',
-      `Choose what to delete for ${reciterName}:`,
+      tr("quranSettingsDrawer.deleteAudioRecitation"),
+      tr("quranSettingsDrawer.chooseWhatToDeleteForValue", { value1: reciterName }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         {
-          text: 'Delete Whole Quran',
+          text: tr("quranSettingsDrawer.deleteWholeQuran"),
           style: 'destructive',
           onPress: async () => {
             await deleteAudioFiles(reciterId, null);
           },
         },
         {
-          text: 'Select Specific Surahs',
+          text: tr("quranSettingsDrawer.selectSpecificSurahs"),
           onPress: () => {
             // Open surah selector for deletion
             setSelectedReciterForSurah(reciterId);
@@ -556,7 +527,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const deleteAudioFiles = async (reciterId, selectedSurahNumbers = null) => {
     try {
-      const reciterName = RECITERS.find(r => r.id === reciterId)?.name || reciterId;
+      const reciterName = getReciterName(reciterId);
       console.log(`Starting deletion of audio for ${reciterId}...`);
       
       const audioDir = `${FileSystem.documentDirectory}quran_audio/${reciterId}/`;
@@ -602,7 +573,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           }
         }
         
-        Alert.alert('Success', `Deleted ${deletedCount} surah(s) for ${reciterName}.`);
+        Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.deletedValueSurahSForValue", { value1: deletedCount, value2: reciterName }));
       } else {
         // Delete all audio files
         const downloadedAud = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO);
@@ -643,7 +614,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           }
         }
         
-        Alert.alert('Success', `All audio files for ${reciterName} have been deleted successfully.`);
+        Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.allAudioFilesForValueHaveBeenDeleted", { value1: reciterName }));
       }
       
       // Clear download state if downloading
@@ -662,13 +633,13 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       await loadDownloadedSurahsPerReciter(reciterId);
     } catch (error) {
       console.error('Error deleting audio:', error);
-      Alert.alert('Error', `Failed to delete audio recitation: ${error.message || 'Unknown error'}. Please try again.`);
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDeleteAudioRecitationValuePleaseTry", { value1: tr('errors.requestFailed') }));
     }
   };
 
   const handleDownloadSelected = () => {
     if (!selectedReciterForSurah || selectedSurahsForDownload.length === 0) {
-      Alert.alert('No Selection', 'Please select at least one surah to download.');
+      Alert.alert(tr("quranSettingsDrawer.noSelection"), tr("quranSettingsDrawer.pleaseSelectAtLeastOneSurahToDownload"));
       return;
     }
 
@@ -690,7 +661,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const handleDeleteSelected = async () => {
     if (!selectedReciterForSurah || selectedSurahsForDelete.length === 0) {
-      Alert.alert('No Selection', 'Please select at least one surah to delete.');
+      Alert.alert(tr("quranSettingsDrawer.noSelection"), tr("quranSettingsDrawer.pleaseSelectAtLeastOneSurahToDelete"));
       return;
     }
 
@@ -751,12 +722,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
     // Show options: Whole Quran or Select Surahs
     Alert.alert(
-      'Download Audio Recitation',
-      `Choose what to download for ${RECITERS.find(r => r.id === reciterId)?.name || reciterId}:`,
+      tr("quranSettingsDrawer.downloadAudioRecitation"),
+      tr("quranSettingsDrawer.chooseWhatToDownloadForValue", { value1: getReciterName(reciterId) }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         {
-          text: 'Whole Quran (114 surahs)',
+          text: tr("quranSettingsDrawer.wholeQuran114Surahs"),
           onPress: () => {
             // Set downloading state immediately
             const totalSurahs = SURAHS.length;
@@ -769,7 +740,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           },
         },
         {
-          text: 'Select Specific Surahs',
+          text: tr("quranSettingsDrawer.selectSpecificSurahs"),
           onPress: () => {
             // Open surah selector
             setSelectedReciterForSurah(reciterId);
@@ -1043,21 +1014,21 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
         // Only show alerts if download completed (not paused)
         if (successCount === SURAHS.length && failCount === 0) {
-          Alert.alert('Success', `Audio recitation downloaded successfully for all ${successCount} surahs!`);
+          Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.audioRecitationDownloadedSuccessfullyForAllValueSurahs", { value1: successCount }));
         } else if (successCount > 0) {
-          const errorDetails = errors.length > 0 ? `\n\nFirst few errors:\n${errors.slice(0, 3).join('\n')}` : '';
+          if (errors.length) console.warn('Audio download failures:', errors);
           Alert.alert(
-            'Partial Success',
-            `Downloaded ${successCount} out of ${SURAHS.length} surahs. ${failCount} failed.${errorDetails}`
+            tr("quranSettingsDrawer.partialSuccess"),
+            tr("quranSettingsDrawer.downloadedValueOutOfValueSurahsValueFailed_5711b", { value1: successCount, value2: SURAHS.length, value3: failCount, value4: '' })
           );
         } else {
-          const errorDetails = errors.length > 0 ? `\n\nErrors:\n${errors.slice(0, 5).join('\n')}` : '';
-          Alert.alert('Error', `Failed to download audio recitation. Please check your internet connection and try again.${errorDetails}`);
+          if (errors.length) console.warn('Audio download failures:', errors);
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadAudioRecitationPleaseCheckYour", { value1: '' }));
         }
       }
     } catch (error) {
       console.error('Download error:', error);
-      Alert.alert('Error', `Failed to download audio recitation: ${error.message || 'Unknown error'}. Please check your internet connection.`);
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadAudioRecitationValuePleaseCheck", { value1: tr('errors.requestFailed') }));
       setDownloadingAudio(prev => {
         const updated = { ...prev };
         delete updated[reciterId];
@@ -1083,7 +1054,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         format: 'alquran',
       },
       {
-        url: `https://api.alquran.cloud/v1/surah/${surahNumber}/editions/quran-uthmani`,
+        url: `https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`,
         format: 'alquran',
       },
       {
@@ -1236,9 +1207,9 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
           setPausedArabic(true);
           setFailedSurahs(currentFailedSurahs);
           Alert.alert(
-            'Download Paused',
-            `Failed to download surah ${surah.number} (${surah.name}). Download paused. You can resume to continue with remaining surahs.`,
-            [{ text: 'OK' }]
+            tr("quranSettingsDrawer.downloadPaused"),
+            tr("quranSettingsDrawer.failedToDownloadSurahValueValueDownloadPaused", { value1: surah.number, value2: surah.name }),
+            [{ text: tr("quran.ok") }]
           );
           break; // Exit loop
         }
@@ -1272,9 +1243,9 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         setPausedArabic(true);
         setFailedSurahs(currentFailedSurahs);
         Alert.alert(
-          'Download Paused',
-          `Failed to download surah ${surah.number} (${surah.name}): ${error.message || 'Unknown error'}. Download paused. You can resume to continue with remaining surahs.`,
-          [{ text: 'OK' }]
+          tr("quranSettingsDrawer.downloadPaused"),
+          tr("quranSettingsDrawer.failedToDownloadSurahValueValueValueDownload", { value1: surah.number, value2: surah.name, value3: tr('errors.requestFailed') }),
+          [{ text: tr("quran.ok") }]
         );
         break; // Exit loop
       }
@@ -1292,12 +1263,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const handleDeleteArabic = async () => {
     Alert.alert(
-      'Delete Arabic Quran',
-      'Are you sure you want to delete all downloaded Arabic Quran surahs? This will free up storage space but you will need to download again for offline access.',
+      tr("quranSettingsDrawer.deleteArabicQuran"),
+      tr("quranSettingsDrawer.areYouSureYouWantToDeleteAll"),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         {
-          text: 'Delete',
+          text: tr("actions.delete", { ns: 'common' }),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -1336,10 +1307,10 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
               // Reload settings to ensure UI is updated
               await loadSettings();
               
-              Alert.alert('Success', `Arabic Quran has been deleted successfully. ${deletedCount} surahs removed.`);
+              Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.arabicQuranHasBeenDeletedSuccessfullyValueSurahs", { value1: deletedCount }));
             } catch (error) {
               console.error('Error deleting Arabic Quran:', error);
-              Alert.alert('Error', `Failed to delete Arabic Quran: ${error.message || 'Unknown error'}. Please try again.`);
+              Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDeleteArabicQuranValuePleaseTry", { value1: tr('errors.requestFailed') }));
             }
           },
         },
@@ -1355,7 +1326,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const handleDownloadArabic = async (isResume = false) => {
     if (downloadedArabic) {
-      Alert.alert('Info', 'Arabic Quran is already downloaded');
+      Alert.alert(tr("quran.info"), tr("quranSettingsDrawer.arabicQuranIsAlreadyDownloaded"));
       return;
     }
 
@@ -1371,19 +1342,19 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
       setFailedSurahs([]);
       
       const remainingCount = SURAHS.length - downloadedCount;
-      const actionText = downloadedCount > 0 ? 'Resume Download' : 'Download';
-      const message = downloadedCount > 0 
-        ? `You have ${downloadedCount} surahs downloaded. This will download the remaining ${remainingCount} surahs from quran.com API. This may take a few minutes. Make sure you have a stable internet connection.`
-        : 'This will download the entire Quran (114 surahs) from quran.com API for offline reading. This may take a few minutes. Make sure you have a stable internet connection.';
+      const actionText = downloadedCount > 0 ? tr('quranSettingsDrawer.resumeDownload') : tr('actions.download', { ns: 'common' });
+      const message = downloadedCount > 0
+        ? tr('quranSettingsDrawer.downloadRemaining', { downloaded: downloadedCount, remaining: remainingCount })
+        : tr('quranSettingsDrawer.downloadEntire');
 
       setDownloadingArabic(true);
       setDownloadProgress({ current: downloadedCount, total: SURAHS.length });
       
       Alert.alert(
-        `${actionText} Arabic Quran`,
+        tr("quranSettingsDrawer.valueArabicQuran", { value1: actionText }),
         message,
         [
-          { text: 'Cancel', onPress: () => setDownloadingArabic(false) },
+          { text: tr("actions.cancel", { ns: 'common' }), onPress: () => setDownloadingArabic(false) },
           {
             text: actionText,
             onPress: async () => {
@@ -1420,19 +1391,19 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         // Only show alerts if download completed (not paused)
         if (!paused) {
           if (failCount === 0 && successCount === totalSurahs) {
-            Alert.alert('Success', `All ${successCount} surahs downloaded successfully! The entire Quran is now available offline.`);
+            Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.allValueSurahsDownloadedSuccessfullyTheEntireQuran", { value1: successCount }));
             setFailedSurahs([]); // Clear failed surahs on success
           } else if (successCount > 0) {
             Alert.alert(
-              'Partial Success',
-              `Downloaded ${successCount} out of ${totalSurahs} surahs. ${failCount} failed. You can resume to continue with remaining surahs.`
+              tr("quranSettingsDrawer.partialSuccess"),
+              tr("quranSettingsDrawer.downloadedValueOutOfValueSurahsValueFailed_1b8a5", { value1: successCount, value2: totalSurahs, value3: failCount })
             );
           }
         }
       } catch (error) {
         console.error('Download error:', error);
         if (!pausedArabic) {
-          Alert.alert('Error', 'Failed to download Arabic Quran. Please check your internet connection and try again.');
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadArabicQuranPleaseCheckYour"));
         }
       } finally {
         // Only clear downloading state if not paused
@@ -1445,6 +1416,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
   const dynamicStyles = StyleSheet.create({
     overlay: {
+      direction: isRTL ? 'rtl' : 'ltr',
       flex: 1,
       flexDirection: 'row',
       backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
@@ -1560,7 +1532,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
         >
           <View style={dynamicStyles.drawerContent}>
             <View style={dynamicStyles.header}>
-              <Text style={dynamicStyles.headerTitle}>Quran Settings</Text>
+              <Text style={dynamicStyles.headerTitle}>{tr("quranSettingsDrawer.quranSettings")}</Text>
               <TouchableOpacity onPress={onClose}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1573,7 +1545,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
             >
             {/* Arabic Quran */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Download</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("actions.download", { ns: 'common' })}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <TouchableOpacity
                   style={[dynamicStyles.fontOption, downloadedArabic && { opacity: 0.6 }, { flex: 1 }]}
@@ -1585,42 +1557,34 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                       name={downloadedArabic ? 'checkmark-circle' : downloadingArabic ? 'hourglass-outline' : 'download-outline'}
                       size={20}
                       color={downloadedArabic ? colors.text : colors.textSecondary}
-                      style={{ marginRight: 10 }}
+                      style={{ marginEnd: 10 }}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={dynamicStyles.fontOptionText}>
                         {downloadingArabic 
-                          ? `Downloading... (${downloadProgress.current}/${downloadProgress.total})`
+                          ? tr("quranSettingsDrawer.downloadingValueValue", { value1: downloadProgress.current, value2: downloadProgress.total })
                           : downloadedArabic 
-                          ? 'Arabic Quran Downloaded (114/114)' 
+                          ? tr("quranSettingsDrawer.arabicQuranDownloaded114114")
                           : downloadedCount > 0
-                          ? `Resume Download (${downloadedCount}/114 downloaded)`
-                          : 'Arabic Quran'}
+                          ? tr("quranSettingsDrawer.resumeDownloadValue114Downloaded", { value1: downloadedCount })
+                          : tr("quranSettingsDrawer.arabicQuran")}
                       </Text>
                       {downloadingArabic && (
                         <>
                           <Text style={[dynamicStyles.translationSubtext, { marginTop: 4 }]}>
-                            {pausedArabic ? 'Paused' : 'Downloading...'} ({downloadProgress.current}/{downloadProgress.total})
+                            {pausedArabic ? tr("audioPlayer.paused") : tr("dua.downloading")} ({formatNumber(downloadProgress.current)}/{formatNumber(downloadProgress.total)})
                           </Text>
-                          <Text style={[dynamicStyles.translationSubtext, { marginTop: 2 }]}>
-                            {Math.round((downloadProgress.current / downloadProgress.total) * 100)}% complete
-                          </Text>
+                          <Text style={[dynamicStyles.translationSubtext, { marginTop: 2 }]}>{tr("quranSettingsDrawer.valueComplete", { value1: Math.round((downloadProgress.current / downloadProgress.total) * 100) })}</Text>
                           {failedSurahs.length > 0 && (
-                            <Text style={[dynamicStyles.translationSubtext, { marginTop: 2, color: colors.textSecondary }]}>
-                              {failedSurahs.length} surah(s) failed - tap Resume to retry
-                            </Text>
+                            <Text style={[dynamicStyles.translationSubtext, { marginTop: 2, color: colors.textSecondary }]}>{tr("quranSettingsDrawer.valueSurahSFailedTapResumeToRetry", { value1: failedSurahs.length })}</Text>
                           )}
                         </>
                       )}
                       {!downloadingArabic && downloadedArabic && (
-                        <Text style={[dynamicStyles.translationSubtext, { marginTop: 4 }]}>
-                          All 114 surahs available offline
-                        </Text>
+                        <Text style={[dynamicStyles.translationSubtext, { marginTop: 4 }]}>{tr("quranSettingsDrawer.all114SurahsAvailableOffline")}</Text>
                       )}
                       {!downloadingArabic && !downloadedArabic && downloadedCount > 0 && (
-                        <Text style={[dynamicStyles.translationSubtext, { marginTop: 4 }]}>
-                          {downloadedCount} surahs already downloaded, {SURAHS.length - downloadedCount} remaining
-                        </Text>
+                        <Text style={[dynamicStyles.translationSubtext, { marginTop: 4 }]}>{tr("quranSettingsDrawer.valueSurahsAlreadyDownloadedValueRemaining", { value1: downloadedCount, value2: SURAHS.length - downloadedCount })}</Text>
                       )}
                     </View>
                   </View>
@@ -1644,7 +1608,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                 {downloadedArabic && !downloadingArabic && (
                   <TouchableOpacity
                     onPress={handleDeleteArabic}
-                    style={{ marginLeft: 10, padding: 8 }}
+                    style={{ marginStart: 10, padding: 8 }}
                   >
                     <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
                   </TouchableOpacity>
@@ -1654,7 +1618,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
             {/* Arabic Font Selection */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Arabic Font</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("quranSettingsDrawer.arabicFont")}</Text>
               {ARABIC_FONTS.map((font) => (
                 <TouchableOpacity
                   key={font.id}
@@ -1678,7 +1642,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
             {/* Font Size */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Font Size</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("quranSettingsDrawer.fontSize")}</Text>
               <View style={dynamicStyles.sliderContainer}>
                 <Slider
                   style={{ width: '100%', height: 40 }}
@@ -1691,13 +1655,14 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                   maximumTrackTintColor={colors.textSecondary}
                   thumbTintColor={colors.text}
                 />
-                <Text style={dynamicStyles.sliderValue}>{fontSize}px</Text>
+                <Text style={dynamicStyles.sliderValue}>{tr("quranSettingsDrawer.valuePx", { value1: fontSize })}</Text>
               </View>
             </View>
 
             {/* Translations */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Translations</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("quranSettingsDrawer.translations")}</Text>
+              {hasLegacyTranslations && <Text style={[dynamicStyles.translationSubtext, { marginBottom: 12 }]}>{tr("quranSettingsDrawer.translationDownloadRefresh")}</Text>}
               {TRANSLATIONS.map((translation) => {
                 const isDownloaded = downloadedTranslations.includes(translation.id);
                 const isSelected = selectedTranslation === translation.id;
@@ -1709,16 +1674,14 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                       <Text style={dynamicStyles.translationName}>{translation.name}</Text>
                       {isSelected && (
                         <Text style={dynamicStyles.translationSubtext}>
-                          {isDownloaded ? 'Selected (offline available)' : 'Selected (will load from API)'}
+                          {isDownloaded ? tr("quranSettingsDrawer.selectedOfflineAvailable") : tr("quranSettingsDrawer.selectedWillLoadFromApi")}
                         </Text>
                       )}
                       {isDownloading && downloadProgress && (
-                        <Text style={dynamicStyles.translationSubtext}>
-                          Downloading... ({downloadProgress.current}/{downloadProgress.total})
-                        </Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.downloadingValueValue", { value1: downloadProgress.current, value2: downloadProgress.total })}</Text>
                       )}
                       {isDownloaded && !isDownloading && !isSelected && (
-                        <Text style={dynamicStyles.translationSubtext}>Downloaded for offline</Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.downloadedForOffline")}</Text>
                       )}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1755,7 +1718,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
             {/* Arabic Recitations */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Arabic Recitations</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("quranSettingsDrawer.arabicRecitations")}</Text>
               {RECITERS.filter(r => r.id !== 'arabic_english_r2').map((reciter) => {
                 const isDownloaded = downloadedAudio.includes(reciter.id);
                 const isSelected = selectedReciter === reciter.id;
@@ -1769,18 +1732,16 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                 return (
                   <View key={reciter.id} style={dynamicStyles.translationRow}>
                     <View style={dynamicStyles.translationInfo}>
-                      <Text style={dynamicStyles.translationName}>{reciter.name}</Text>
+                      <Text style={dynamicStyles.translationName}>{getReciterName(reciter)}</Text>
                       {isSelected && (
-                        <Text style={dynamicStyles.translationSubtext}>Currently selected</Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.currentlySelected")}</Text>
                       )}
                       {isBilingual && !isDownloading && (
-                        <Text style={dynamicStyles.translationSubtext}>
-                          Streams Arabic & English recitation from your Cloudflare R2 bucket (no per-device download)
-                        </Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.streamsArabicEnglishRecitationFromYourCloudflareR2")}</Text>
                       )}
                       {isDownloading && downloadProgress && !isBilingual && (
                         <Text style={dynamicStyles.translationSubtext}>
-                          {isPaused ? 'Paused' : 'Downloading...'} ({downloadProgress.current}/{downloadProgress.total})
+                          {isPaused ? tr("audioPlayer.paused") : tr("dua.downloading")} ({formatNumber(downloadProgress.current)}/{formatNumber(downloadProgress.total)})
                         </Text>
                       )}
                       {!isBilingual && !isDownloading && downloadedCount > 0 && (
@@ -1790,19 +1751,17 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                         >
                           <Text style={[dynamicStyles.translationSubtext, { color: colors.text }]}>
                             {downloadedCount === SURAHS.length 
-                              ? 'All 114 surahs downloaded' 
-                              : `${downloadedCount} surah(s) downloaded - Tap to view`}
+                              ? tr("quranSettingsDrawer.all114SurahsDownloaded")
+                              : tr("quranSettingsDrawer.valueSurahSDownloadedTapToView", { value1: downloadedCount })}
                           </Text>
                         </TouchableOpacity>
                       )}
                       {!isBilingual && !isDownloading && downloadedCount === 0 && !isSelected && (
-                        <Text style={dynamicStyles.translationSubtext}>Not downloaded</Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.notDownloaded")}</Text>
                       )}
                       {showDownloadedSurahsList === reciter.id && downloadedSurahs.length > 0 && !isBilingual && (
                         <View style={{ marginTop: 8, padding: 10, backgroundColor: colors.card, borderRadius: 8 }}>
-                          <Text style={[dynamicStyles.translationSubtext, { marginBottom: 8, fontWeight: 'bold' }]}>
-                            Downloaded Surahs ({downloadedSurahs.length}):
-                          </Text>
+                          <Text style={[dynamicStyles.translationSubtext, { marginBottom: 8, fontWeight: 'bold' }]}>{tr("quranSettingsDrawer.downloadedSurahsValue", { value1: downloadedSurahs.length })}</Text>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                             {downloadedSurahs.sort((a, b) => a - b).map((surahNum) => {
                               const surah = SURAHS.find(s => s.number === surahNum);
@@ -1814,12 +1773,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                                     paddingVertical: 4,
                                     backgroundColor: colors.iconBackground,
                                     borderRadius: 6,
-                                    marginRight: 6,
+                                    marginEnd: 6,
                                     marginBottom: 6,
                                   }}
                                 >
                                   <Text style={{ fontSize: 12, color: colors.text }}>
-                                    {surahNum}. {surah?.name || surahNum}
+                                    {formatNumber(surahNum)}. {surah?.name || surahNum}
                                   </Text>
                                 </View>
                               );
@@ -1897,7 +1856,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
 
             {/* Arabic & English Recitation */}
             <View style={dynamicStyles.section}>
-              <Text style={dynamicStyles.sectionTitle}>Arabic & English Recitation</Text>
+              <Text style={dynamicStyles.sectionTitle}>{tr("quranSettingsDrawer.arabicEnglishRecitation")}</Text>
               {RECITERS.filter(r => r.id === 'arabic_english_r2').map((reciter) => {
                 const isDownloaded = downloadedAudio.includes(reciter.id);
                 const isSelected = selectedReciter === reciter.id;
@@ -1910,13 +1869,13 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                 return (
                   <View key={reciter.id} style={dynamicStyles.translationRow}>
                     <View style={dynamicStyles.translationInfo}>
-                      <Text style={dynamicStyles.translationName}>{reciter.name}</Text>
+                      <Text style={dynamicStyles.translationName}>{getReciterName(reciter)}</Text>
                       {isSelected && (
-                        <Text style={dynamicStyles.translationSubtext}>Currently selected</Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.currentlySelected")}</Text>
                       )}
                       {isDownloading && downloadProgress && (
                         <Text style={dynamicStyles.translationSubtext}>
-                          {isPaused ? 'Paused' : 'Downloading...'} ({downloadProgress.current}/{downloadProgress.total})
+                          {isPaused ? tr("audioPlayer.paused") : tr("dua.downloading")} ({formatNumber(downloadProgress.current)}/{formatNumber(downloadProgress.total)})
                         </Text>
                       )}
                       {!isDownloading && downloadedCount > 0 && (
@@ -1926,19 +1885,17 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                         >
                           <Text style={[dynamicStyles.translationSubtext, { color: colors.text }]}>
                             {downloadedCount === SURAHS.length 
-                              ? 'All 114 surahs downloaded' 
-                              : `${downloadedCount} surah(s) downloaded - Tap to view`}
+                              ? tr("quranSettingsDrawer.all114SurahsDownloaded")
+                              : tr("quranSettingsDrawer.valueSurahSDownloadedTapToView", { value1: downloadedCount })}
                           </Text>
                         </TouchableOpacity>
                       )}
                       {!isDownloading && downloadedCount === 0 && !isSelected && (
-                        <Text style={dynamicStyles.translationSubtext}>Not downloaded</Text>
+                        <Text style={dynamicStyles.translationSubtext}>{tr("quranSettingsDrawer.notDownloaded")}</Text>
                       )}
                       {showDownloadedSurahsList === reciter.id && downloadedSurahs.length > 0 && (
                         <View style={{ marginTop: 8, padding: 10, backgroundColor: colors.card, borderRadius: 8 }}>
-                          <Text style={[dynamicStyles.translationSubtext, { marginBottom: 8, fontWeight: 'bold' }]}>
-                            Downloaded Surahs ({downloadedSurahs.length}):
-                          </Text>
+                          <Text style={[dynamicStyles.translationSubtext, { marginBottom: 8, fontWeight: 'bold' }]}>{tr("quranSettingsDrawer.downloadedSurahsValue", { value1: downloadedSurahs.length })}</Text>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                             {downloadedSurahs.sort((a, b) => a - b).map((surahNum) => {
                               const surah = SURAHS.find(s => s.number === surahNum);
@@ -1950,12 +1907,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                                     paddingVertical: 4,
                                     backgroundColor: colors.iconBackground,
                                     borderRadius: 6,
-                                    marginRight: 6,
+                                    marginEnd: 6,
                                     marginBottom: 6,
                                   }}
                                 >
                                   <Text style={{ fontSize: 12, color: colors.text }}>
-                                    {surahNum}. {surah?.name || surahNum}
+                                    {formatNumber(surahNum)}. {surah?.name || surahNum}
                                   </Text>
                                 </View>
                               );
@@ -2066,8 +2023,8 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
               <View style={dynamicStyles.header}>
                 <Text style={dynamicStyles.headerTitle}>
                   {selectedReciterForSurah 
-                    ? `${RECITERS.find(r => r.id === selectedReciterForSurah)?.name || 'Reciter'} - Manage Surahs`
-                    : 'Manage Surahs'}
+                    ? tr("quranSettingsDrawer.valueManageSurahs", { value1: getReciterName(selectedReciterForSurah) })
+                    : tr("quranSettingsDrawer.manageSurahs")}
                 </Text>
                 <TouchableOpacity onPress={() => {
                   setShowSurahSelector(false);
@@ -2106,7 +2063,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                             style={{ padding: 8 }}
                           >
                             <Text style={{ color: colors.text, fontSize: 14 }}>
-                              {allNotDownloadedSelected ? 'Deselect All (Download)' : 'Select All (Download)'}
+                              {allNotDownloadedSelected ? tr("quranSettingsDrawer.deselectAllDownload") : tr("quranSettingsDrawer.selectAllDownload")}
                             </Text>
                           </TouchableOpacity>
                           {downloadedSurahs.length > 0 && (
@@ -2121,14 +2078,12 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                               style={{ padding: 8 }}
                             >
                               <Text style={{ color: colors.text, fontSize: 14 }}>
-                                {allDownloadedSelected ? 'Deselect All (Delete)' : 'Select All (Delete)'}
+                                {allDownloadedSelected ? tr("quranSettingsDrawer.deselectAllDelete") : tr("quranSettingsDrawer.selectAllDelete")}
                               </Text>
                             </TouchableOpacity>
                           )}
                         </View>
-                        <Text style={{ color: colors.textSecondary, fontSize: 14, marginLeft: 10, flexShrink: 0 }}>
-                          {totalSelected} selected
-                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 14, marginStart: 10, flexShrink: 0 }}>{tr("quranSettingsDrawer.valueSelected", { value1: totalSelected })}</Text>
                       </View>
 
                       {SURAHS.map((surah) => {
@@ -2154,11 +2109,9 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                                     dynamicStyles.fontOptionText,
                                     isSelected && dynamicStyles.fontOptionTextSelected
                                   ]}>
-                                    {surah.number}. {surah.name} ({surah.nameArabic})
+                                    {formatNumber(surah.number)}. {surah.name} ({surah.nameArabic})
                                   </Text>
-                                  <Text style={[dynamicStyles.translationSubtext, { marginTop: 2 }]}>
-                                    {surah.ayahs} verses {isDownloaded ? '• Downloaded' : '• Not downloaded'}
-                                  </Text>
+                                  <Text style={[dynamicStyles.translationSubtext, { marginTop: 2 }]}>{tr("quranSettingsDrawer.valueVersesValue", { value1: surah.ayahs, value2: isDownloaded ? tr("quranSettingsDrawer.downloaded") : tr("quranSettingsDrawer.notDownloaded_d6bcb") })}</Text>
                                 </View>
                               </View>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -2200,9 +2153,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                     }
                   ]}
                 >
-                  <Text style={{ color: colors.surface, fontSize: 16, fontWeight: 'bold' }}>
-                    Download {selectedSurahsForDownload.length} Surah(s)
-                  </Text>
+                  <Text style={{ color: colors.surface, fontSize: 16, fontWeight: 'bold' }}>{tr("quranSettingsDrawer.downloadValueSurahS", { value1: selectedSurahsForDownload.length })}</Text>
                 </TouchableOpacity>
                 
                 {selectedSurahsForDelete.length > 0 && (
@@ -2215,9 +2166,7 @@ export default function QuranSettingsDrawer({ visible, onClose, onSettingsChange
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: colors.surface, fontSize: 16, fontWeight: 'bold' }}>
-                      Delete {selectedSurahsForDelete.length} Surah(s)
-                    </Text>
+                    <Text style={{ color: colors.surface, fontSize: 16, fontWeight: 'bold' }}>{tr("quranSettingsDrawer.deleteValueSurahS", { value1: selectedSurahsForDelete.length })}</Text>
                   </TouchableOpacity>
                 )}
               </View>

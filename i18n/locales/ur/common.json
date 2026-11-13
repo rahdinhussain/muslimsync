@@ -1,0 +1,30 @@
+{
+  "actions": {
+    "save": "محفوظ کریں", "cancel": "منسوخ کریں", "close": "بند کریں", "continue": "جاری رکھیں", "back": "واپس",
+    "select": "منتخب کریں", "search": "تلاش کریں", "retry": "دوبارہ کوشش کریں", "refresh": "تازہ کریں", "done": "مکمل",
+    "download": "ڈاؤن لوڈ کریں", "delete": "حذف کریں", "clear": "صاف کریں", "reset": "دوبارہ ترتیب دیں", "confirm": "تصدیق کریں",
+    "open": "کھولیں", "more": "مزید", "view": "دیکھیں", "edit": "ترمیم کریں", "add": "شامل کریں", "remove": "ہٹائیں"
+  },
+  "navigation": {
+    "home": "مرکزی صفحہ", "quran": "قرآن", "dhikr": "اذکار", "duas": "دعائیں", "mosques": "مساجد",
+    "settings": "ترتیبات", "about": "تعارف", "help": "مدد اور معاونت", "contact": "رابطہ کریں", "dashboard": "ڈیش بورڈ"
+  },
+  "language": {
+    "title": "زبان", "choose": "اپنی زبان منتخب کریں", "description": "Muslim Sync کے استعمال کی زبان منتخب کریں۔",
+    "changeLater": "آپ بعد میں ترتیبات سے اسے تبدیل کر سکتے ہیں۔", "savedOnDevice": "آپ کا انتخاب اس ڈیوائس پر محفوظ رہے گا۔",
+    "recommended": "تجویز کردہ", "current": "موجودہ زبان", "saveError": "آپ کی زبان محفوظ نہیں ہو سکی۔ دوبارہ کوشش کریں۔",
+    "contentIndependent": "قرآن کے ترجمے اور نماز کے مقام کی ترتیبات الگ ہیں۔",
+    "switchLabel": "زبان تبدیل کریں", "loading": "آپ کی زبان تیار کی جا رہی ہے…"
+  },
+  "prayers": {
+    "fajr": "فجر", "sunrise": "طلوعِ آفتاب", "dhuhr": "ظہر", "asr": "عصر", "maghrib": "مغرب",
+    "isha": "عشاء", "jumuah": "جمعہ", "athan": "اذان", "iqama": "اقامت", "nextPrayer": "اگلی نماز", "today": "آج"
+  },
+  "status": { "loading": "لوڈ ہو رہا ہے…", "error": "کوئی خرابی پیش آئی", "noResults": "کوئی نتیجہ نہیں ملا", "offline": "آف لائن", "saving": "محفوظ کیا جا رہا ہے…", "saved": "محفوظ ہو گیا", "unknown": "نامعلوم" },
+  "settings": { "language": "زبان", "theme": "ظاہری شکل", "location": "مقام", "prayerCalculation": "نماز کے اوقات کا حساب", "about": "Muslim Sync کا تعارف", "help": "مدد اور معاونت" },
+  "quran": {
+    "arabic": "عربی", "translation": "ترجمہ", "transliteration": "تلفظ", "reciter": "قاری",
+    "translationUnavailable": "{{language}} میں ترجمہ دستیاب نہیں ہے۔ اصل متن دکھایا جا رہا ہے۔",
+    "translationLanguage": "ترجمہ {{language}} میں دکھایا جا رہا ہے", "translationEdition": "ترجمے کا نسخہ"
+  }
+}

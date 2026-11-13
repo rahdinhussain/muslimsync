@@ -1,23 +1,20 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
-  Alert,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, ActivityIndicator } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import { supabase } from '../lib/supabase';
 import { format, addDays, subDays, isSameDay } from 'date-fns';
+import { tr, prayerLabel, formatDate, formatPrayerTime, formatNumber } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function MosqueScheduleScreen({ route }) {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const { mosque } = route.params || {};
@@ -51,7 +48,7 @@ export default function MosqueScheduleScreen({ route }) {
     },
     backButton: {
       position: 'absolute',
-      left: 15,
+      start: 15,
       top: 15,
       padding: 5,
       zIndex: 1,
@@ -97,7 +94,7 @@ export default function MosqueScheduleScreen({ route }) {
       color: colors.text,
       fontSize: 16,
       fontWeight: '600',
-      marginLeft: 8,
+      marginStart: 8,
     },
     sectionTitle: {
       fontSize: 22,
@@ -132,7 +129,7 @@ export default function MosqueScheduleScreen({ route }) {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     prayerName: {
       fontSize: 18,
@@ -171,7 +168,7 @@ export default function MosqueScheduleScreen({ route }) {
       contactText: {
         fontSize: 14,
         color: colors.text,
-        marginLeft: 8,
+        marginStart: 8,
       },
   });
 
@@ -179,7 +176,7 @@ export default function MosqueScheduleScreen({ route }) {
     return (
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
         <View style={dynamicStyles.container}>
-          <Text style={dynamicStyles.errorText}>No mosque information available</Text>
+          <Text style={dynamicStyles.errorText}>{tr("mosqueSchedule.noMosqueInformationAvailable")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -331,10 +328,10 @@ export default function MosqueScheduleScreen({ route }) {
       if (canOpen) {
         await Linking.openURL(url);
       } else {
-        Alert.alert('Unable to place call', 'Calling is not supported on this device.');
+        Alert.alert(tr("mosqueSchedule.unableToPlaceCall"), tr("mosqueSchedule.callingIsNotSupportedOnThisDevice"));
       }
     } catch (error) {
-      Alert.alert('Error', 'Unable to open the phone dialer.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("mosqueSchedule.unableToOpenThePhoneDialer"));
     }
   };
 
@@ -345,7 +342,7 @@ export default function MosqueScheduleScreen({ route }) {
       url = `https://${url}`;
     }
     Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Unable to open website.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("mosqueSchedule.unableToOpenWebsite"));
     });
   };
 
@@ -362,7 +359,7 @@ export default function MosqueScheduleScreen({ route }) {
         // Fallback to web Google Maps
         const webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
         Linking.openURL(webUrl).catch(() => {
-          Alert.alert('Error', 'Unable to open maps.');
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("mosqueSchedule.unableToOpenMaps"));
         });
       });
     };
@@ -374,34 +371,34 @@ export default function MosqueScheduleScreen({ route }) {
       if (Platform.OS === 'ios') {
         Linking.openURL(iosUrl).catch(() => {
           Linking.openURL(webUrl).catch(() => {
-            Alert.alert('Error', 'Unable to open Google Maps.');
+            Alert.alert(tr("status.error", { ns: 'common' }), tr("mosqueSchedule.unableToOpenGoogleMaps"));
           });
         });
       } else {
         Linking.openURL(webUrl).catch(() => {
-          Alert.alert('Error', 'Unable to open Google Maps.');
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("mosqueSchedule.unableToOpenGoogleMaps"));
         });
       }
     };
 
     if (Platform.OS === 'ios') {
       Alert.alert(
-        'Open Directions',
-        'Choose maps app',
+        tr("mosqueSchedule.openDirections"),
+        tr("mosqueSchedule.chooseMapsApp"),
         [
-          { text: 'Apple Maps', onPress: openAppleMaps },
-          { text: 'Google Maps', onPress: openGoogleMaps },
-          { text: 'Cancel', style: 'cancel' },
+          { text: tr("mosqueSchedule.appleMaps"), onPress: openAppleMaps },
+          { text: tr("mosqueSchedule.googleMaps"), onPress: openGoogleMaps },
+          { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         ],
         { cancelable: true }
       );
     } else {
       Alert.alert(
-        'Open Directions',
-        'Choose maps app',
+        tr("mosqueSchedule.openDirections"),
+        tr("mosqueSchedule.chooseMapsApp"),
         [
-          { text: 'Google Maps', onPress: openGoogleMaps },
-          { text: 'Cancel', style: 'cancel' },
+          { text: tr("mosqueSchedule.googleMaps"), onPress: openGoogleMaps },
+          { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         ],
         { cancelable: true }
       );
@@ -426,7 +423,7 @@ export default function MosqueScheduleScreen({ route }) {
           onPress={() => navigation.goBack()}
           style={dynamicStyles.backButton}
         >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
+          <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={dynamicStyles.mosqueName}>{mosque.name}</Text>
         <Text style={dynamicStyles.mosqueAddress}>{fullAddress}</Text>
@@ -456,7 +453,7 @@ export default function MosqueScheduleScreen({ route }) {
 
       <View style={styles.scheduleContainer}>
         <View style={styles.scheduleHeader}>
-        <Text style={dynamicStyles.sectionTitle}>Prayer Schedule</Text>
+        <Text style={dynamicStyles.sectionTitle}>{tr("mosqueSchedule.prayerSchedule")}</Text>
           {selectedDate && (
             <View style={styles.dateNavigation}>
               <TouchableOpacity
@@ -469,13 +466,13 @@ export default function MosqueScheduleScreen({ route }) {
                 ]}
               >
                 <Ionicons 
-                  name="chevron-back" 
+                  name={isRTL ? 'chevron-forward' : 'chevron-back'}
                   size={20} 
                   color={hasPreviousDate() ? colors.text : colors.textSecondary} 
                 />
               </TouchableOpacity>
               <Text style={[styles.dateText, { color: colors.text }]}>
-                {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                {formatDate(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </Text>
               <TouchableOpacity
                 onPress={goToNextDate}
@@ -487,7 +484,7 @@ export default function MosqueScheduleScreen({ route }) {
                 ]}
               >
                 <Ionicons 
-                  name="chevron-forward" 
+                  name={isRTL ? 'chevron-back' : 'chevron-forward'}
                   size={20} 
                   color={hasNextDate() ? colors.text : colors.textSecondary} 
                 />
@@ -499,9 +496,7 @@ export default function MosqueScheduleScreen({ route }) {
         {loadingPrayerTimes ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.text} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Loading prayer times...
-            </Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{tr("mosqueSchedule.loadingPrayerTimes")}</Text>
           </View>
         ) : !prayerTimes ? (
           <View style={styles.noDataContainer}>
@@ -513,9 +508,9 @@ export default function MosqueScheduleScreen({ route }) {
                 const selectedDateNormalized = new Date(selectedDate);
                 selectedDateNormalized.setHours(0, 0, 0, 0);
                 if (isSameDay(selectedDateNormalized, today)) {
-                  return "Prayer times not available for today";
+                  return tr('mosqueSchedule.unavailableToday');
                 }
-                return `Prayer times not available for ${format(selectedDate, 'MMMM d, yyyy')}`;
+                return tr('mosqueSchedule.unavailableDate', { date: formatDate(selectedDate, { year: 'numeric', month: 'long', day: 'numeric' }) });
               })()}
             </Text>
           </View>
@@ -568,7 +563,7 @@ export default function MosqueScheduleScreen({ route }) {
                     const iqama = (jummahItem.iqama || jummahItem.Iqama) ? String(jummahItem.iqama || jummahItem.Iqama).trim() : '';
                     if (athan || iqama) {
                       // Only show number if there's more than one Jumu'ah
-                      const name = jummahArray.length > 1 ? `Jumu'ah ${index + 1}` : 'Jumu\'ah';
+                      const name = jummahArray.length > 1 ? tr('mosqueSchedule.fridayPrayerNumber', { number: formatNumber(index + 1) }) : tr('prayers.jumuah', { ns: 'common' });
                       prayerCards.push({
                         key: `jumuah_${index}`,
                         athan,
@@ -593,21 +588,21 @@ export default function MosqueScheduleScreen({ route }) {
                       <Ionicons name={icon} size={28} color={color} />
             </View>
             <View style={styles.prayerInfo}>
-                      <Text style={dynamicStyles.prayerName}>{name}</Text>
+                      <Text style={dynamicStyles.prayerName}>{key.startsWith('jumuah_') ? name : prayerLabel(key)}</Text>
                       {hasBoth ? (
                         <View style={styles.prayerTimeContainer}>
                           <View style={styles.timeRow}>
-                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>Athan</Text>
-                            <Text style={dynamicStyles.prayerTime}>{athan}</Text>
+                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>{tr("mosqueSchedule.athan")}</Text>
+                            <Text style={dynamicStyles.prayerTime}>{formatPrayerTime(athan)}</Text>
                           </View>
                           <View style={styles.timeRow}>
-                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>Iqama</Text>
-                            <Text style={dynamicStyles.prayerTime}>{iqama}</Text>
+                            <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>{tr("mosqueSchedule.iqama")}</Text>
+                            <Text style={dynamicStyles.prayerTime}>{formatPrayerTime(iqama)}</Text>
                           </View>
                         </View>
                       ) : (
               <Text style={dynamicStyles.prayerTime}>
-                          {displayTime || athan || iqama}
+                          {formatPrayerTime(displayTime || athan || iqama)}
                         </Text>
                       )}
                     </View>
@@ -624,7 +619,7 @@ export default function MosqueScheduleScreen({ route }) {
           <View style={[dynamicStyles.infoCard, { backgroundColor: colors.cardSecondary || colors.card }]}>
             <Ionicons name="megaphone-outline" size={24} color={colors.text} />
             <View style={styles.infoContent}>
-              <Text style={dynamicStyles.infoTitle}>Notice</Text>
+              <Text style={dynamicStyles.infoTitle}>{tr("mosqueSchedule.notice")}</Text>
               <Text style={dynamicStyles.infoText}>
                 {String(mosque.notice).trim()}
               </Text>
@@ -637,12 +632,8 @@ export default function MosqueScheduleScreen({ route }) {
         <View style={dynamicStyles.infoCard}>
           <Ionicons name="information-circle" size={24} color={colors.text} />
           <View style={styles.infoContent}>
-            <Text style={dynamicStyles.infoTitle}>About This Mosque</Text>
-            <Text style={dynamicStyles.infoText}>
-              Visit this mosque for congregational prayers and community events.
-              Prayer times may vary slightly, so it's recommended to confirm with
-              the mosque directly.
-            </Text>
+            <Text style={dynamicStyles.infoTitle}>{tr("mosqueSchedule.aboutThisMosque")}</Text>
+            <Text style={dynamicStyles.infoText}>{tr("mosqueSchedule.visitThisMosqueForCongregationalPrayersAndCommunity")}</Text>
           </View>
         </View>
       </View>
@@ -712,7 +703,7 @@ const styles = StyleSheet.create({
   },
   infoContent: {
     flex: 1,
-    marginLeft: 15,
+    marginStart: 15,
   },
   loadingContainer: {
     padding: 40,
@@ -744,7 +735,7 @@ const styles = StyleSheet.create({
   },
   timeLabel: {
     fontSize: 12,
-    marginRight: 8,
+    marginEnd: 8,
     fontWeight: '500',
   },
 });

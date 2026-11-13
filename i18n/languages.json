@@ -1,0 +1,9 @@
+{
+  "defaultLocale": "en",
+  "languages": [
+    { "code": "en", "name": "English", "nativeName": "English", "direction": "ltr", "intlLocale": "en" },
+    { "code": "bn", "name": "Bangla", "nativeName": "বাংলা", "direction": "ltr", "intlLocale": "bn" },
+    { "code": "ar", "name": "Arabic", "nativeName": "العربية", "direction": "rtl", "intlLocale": "ar" },
+    { "code": "ur", "name": "Urdu", "nativeName": "اردو", "direction": "rtl", "intlLocale": "ur" }
+  ]
+}

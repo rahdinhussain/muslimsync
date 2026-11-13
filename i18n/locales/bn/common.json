@@ -1,0 +1,30 @@
+{
+  "actions": {
+    "save": "সংরক্ষণ করুন", "cancel": "বাতিল করুন", "close": "বন্ধ করুন", "continue": "চালিয়ে যান", "back": "ফিরে যান",
+    "select": "বেছে নিন", "search": "খুঁজুন", "retry": "আবার চেষ্টা করুন", "refresh": "রিফ্রেশ করুন", "done": "সম্পন্ন",
+    "download": "ডাউনলোড করুন", "delete": "মুছে ফেলুন", "clear": "খালি করুন", "reset": "রিসেট করুন", "confirm": "নিশ্চিত করুন",
+    "open": "খুলুন", "more": "আরও", "view": "দেখুন", "edit": "সম্পাদনা করুন", "add": "যোগ করুন", "remove": "সরিয়ে দিন"
+  },
+  "navigation": {
+    "home": "হোম", "quran": "কুরআন", "dhikr": "যিকির", "duas": "দোয়া", "mosques": "মসজিদ",
+    "settings": "সেটিংস", "about": "পরিচিতি", "help": "সাহায্য ও সহায়তা", "contact": "যোগাযোগ", "dashboard": "ড্যাশবোর্ড"
+  },
+  "language": {
+    "title": "ভাষা", "choose": "আপনার ভাষা বেছে নিন", "description": "Muslim Sync ব্যবহারের ভাষা বেছে নিন।",
+    "changeLater": "পরে সেটিংস থেকে এটি পরিবর্তন করতে পারবেন।", "savedOnDevice": "আপনার পছন্দ এই ডিভাইসে সংরক্ষিত থাকবে।",
+    "recommended": "প্রস্তাবিত", "current": "বর্তমান ভাষা", "saveError": "আপনার ভাষা সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।",
+    "contentIndependent": "কুরআনের অনুবাদ ও নামাজের অবস্থানের সেটিংস আলাদা।",
+    "switchLabel": "ভাষা পরিবর্তন করুন", "loading": "আপনার ভাষা প্রস্তুত করা হচ্ছে…"
+  },
+  "prayers": {
+    "fajr": "ফজর", "sunrise": "সূর্যোদয়", "dhuhr": "যোহর", "asr": "আসর", "maghrib": "মাগরিব",
+    "isha": "এশা", "jumuah": "জুমা", "athan": "আজান", "iqama": "ইকামত", "nextPrayer": "পরবর্তী নামাজ", "today": "আজ"
+  },
+  "status": { "loading": "লোড হচ্ছে…", "error": "কিছু একটা সমস্যা হয়েছে", "noResults": "কোনো ফলাফল পাওয়া যায়নি", "offline": "অফলাইন", "saving": "সংরক্ষণ করা হচ্ছে…", "saved": "সংরক্ষিত", "unknown": "অজানা" },
+  "settings": { "language": "ভাষা", "theme": "চেহারা", "location": "অবস্থান", "prayerCalculation": "নামাজের সময় গণনা", "about": "Muslim Sync পরিচিতি", "help": "সাহায্য ও সহায়তা" },
+  "quran": {
+    "arabic": "আরবি", "translation": "অনুবাদ", "transliteration": "উচ্চারণ", "reciter": "ক্বারি",
+    "translationUnavailable": "{{language}} ভাষায় অনুবাদ পাওয়া যায়নি। মূল পাঠ দেখানো হচ্ছে।",
+    "translationLanguage": "{{language}} ভাষায় অনুবাদ দেখানো হচ্ছে", "translationEdition": "অনুবাদ সংস্করণ"
+  }
+}

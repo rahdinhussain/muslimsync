@@ -39,7 +39,7 @@ npx eas build --profile development --platform android
 ### Step 4: Install the Build
 
 After the build completes:
-- **iOS**: Download from the provided link and install via TestFlight or direct download
+- **iOS**: Install from the EAS build-page link on a registered device included in the ad hoc provisioning profile. TestFlight uses a separate store build and upload workflow.
 - **Android**: Download the APK from the provided link and install on your device
 
 ### Step 5: Start Development Server

@@ -1,27 +1,26 @@
+import { LocalizedSafeAreaView as SafeAreaView } from './LocalizedPrimitives';
+import { LocalizedText as Text } from './LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import {
   RECITERS,
+  getReciterName,
   TRANSLATIONS,
   getSelectedReciter,
   getSelectedTranslation,
   saveSelectedReciter,
   saveSelectedTranslation,
 } from '../utils/quranStorage';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function QuranDownloadModal({ visible, onClose, onDownload }) {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [selectedReciter, setSelectedReciter] = useState(null);
@@ -41,7 +40,7 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
 
   const handleDownload = async () => {
     if (!selectedReciter || !selectedTranslation) {
-      Alert.alert('Error', 'Please select both a reciter and translation');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("quranDownloadModal.pleaseSelectBothAReciterAndTranslation"));
       return;
     }
 
@@ -52,10 +51,10 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       if (onDownload) {
         await onDownload(selectedReciter, selectedTranslation);
       }
-      Alert.alert('Success', 'Download settings saved! You can now download content.');
+      Alert.alert(tr("dua.success"), tr("quranDownloadModal.downloadSettingsSavedYouCanNowDownloadContent"));
       onClose();
     } catch (error) {
-      Alert.alert('Error', 'Failed to save settings');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("quranDownloadModal.failedToSaveSettings"));
     } finally {
       setLoading(false);
     }
@@ -113,7 +112,7 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       flex: 1,
       fontSize: 16,
       color: colors.text,
-      marginLeft: 12,
+      marginStart: 12,
     },
     downloadButton: {
       backgroundColor: colors.text,
@@ -129,7 +128,7 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       color: colors.surface,
       fontSize: 18,
       fontWeight: 'bold',
-      marginLeft: 10,
+      marginStart: 10,
     },
     infoText: {
       fontSize: 14,
@@ -150,18 +149,16 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
       <SafeAreaView style={dynamicStyles.modalOverlay} edges={[]}>
         <View style={dynamicStyles.modalContent}>
           <View style={dynamicStyles.header}>
-            <Text style={dynamicStyles.headerTitle}>Download Settings</Text>
+            <Text style={dynamicStyles.headerTitle}>{tr("quranDownloadModal.downloadSettings")}</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={28} color={colors.text} />
             </TouchableOpacity>
           </View>
 
           <ScrollView>
-            <Text style={dynamicStyles.infoText}>
-              Select your preferred reciter and translation. You can download content for offline use.
-            </Text>
+            <Text style={dynamicStyles.infoText}>{tr("quranDownloadModal.selectYourPreferredReciterAndTranslationYouCan")}</Text>
 
-            <Text style={dynamicStyles.sectionTitle}>Select Reciter</Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("quranDownloadModal.selectReciter")}</Text>
             {RECITERS.map((reciter) => (
               <TouchableOpacity
                 key={reciter.id}
@@ -176,11 +173,11 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
                   size={24}
                   color={selectedReciter === reciter.id ? colors.text : colors.textSecondary}
                 />
-                <Text style={dynamicStyles.optionText}>{reciter.name}</Text>
+                <Text style={dynamicStyles.optionText}>{getReciterName(reciter)}</Text>
               </TouchableOpacity>
             ))}
 
-            <Text style={dynamicStyles.sectionTitle}>Select Translation</Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("quranDownloadModal.selectTranslation")}</Text>
             {TRANSLATIONS.map((translation) => (
               <TouchableOpacity
                 key={translation.id}
@@ -209,7 +206,7 @@ export default function QuranDownloadModal({ visible, onClose, onDownload }) {
               ) : (
                 <>
                   <Ionicons name="download" size={24} color={colors.surface} />
-                  <Text style={dynamicStyles.downloadButtonText}>Save Settings</Text>
+                  <Text style={dynamicStyles.downloadButtonText}>{tr("quranDownloadModal.saveSettings")}</Text>
                 </>
               )}
             </TouchableOpacity>

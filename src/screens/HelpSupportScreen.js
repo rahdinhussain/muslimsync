@@ -1,26 +1,25 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function HelpSupportScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
 
   const handleEmailPress = () => {
     const email = 'contact@muslimsync.com';
-    const subject = 'Help & Support - Muslim Sync';
-    const body = 'Hello,\n\nI need help with:\n\n';
+    const subject = tr('helpSupport.emailSubject');
+    const body = tr('helpSupport.emailBody');
     const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     
     Linking.canOpenURL(mailtoUrl).then(supported => {
@@ -28,7 +27,7 @@ export default function HelpSupportScreen() {
         Linking.openURL(mailtoUrl);
       } else {
         // Fallback: copy email to clipboard or show alert
-        Alert.alert('Email', `Please send an email to ${email}`);
+        Alert.alert(tr("helpSupport.email"), tr("helpSupport.pleaseSendAnEmailToValue", { value1: email }));
       }
     }).catch(() => {
       // Error opening email (non-critical)
@@ -55,7 +54,7 @@ export default function HelpSupportScreen() {
     },
     backButton: {
       padding: 5,
-      marginRight: 10,
+      marginEnd: 10,
     },
     headerTitle: {
       fontSize: 24,
@@ -111,7 +110,7 @@ export default function HelpSupportScreen() {
     emailText: {
       fontSize: 16,
       color: colors.text,
-      marginLeft: 10,
+      marginStart: 10,
       flex: 1,
     },
     faqItem: {
@@ -142,24 +141,24 @@ export default function HelpSupportScreen() {
 
   const faqs = [
     {
-      question: 'How do I change prayer times calculation method?',
-      answer: 'Go to Settings > Prayer Time Calculation and select your preferred method. The app supports 15 different calculation methods including ISNA, MWL, and others.',
+      question: tr("helpSupport.howDoIChangePrayerTimesCalculationMethod"),
+      answer: tr("helpSupport.goToSettingsPrayerTimeCalculationAndSelect"),
     },
     {
-      question: 'Can I use the app offline?',
-      answer: 'Yes! You can download the Quran, translations, and audio recitations for offline use. Go to the Quran screen, tap the menu icon, and use the download options.',
+      question: tr("helpSupport.canIUseTheAppOffline"),
+      answer: tr("helpSupport.yesYouCanDownloadTheQuranTranslationsAnd"),
     },
     {
-      question: 'How do I find nearby mosques?',
-      answer: 'Open the Mosques tab and allow location access. The app will show all mosques in your city, sorted by distance with the closest ones first.',
+      question: tr("helpSupport.howDoIFindNearbyMosques"),
+      answer: tr("helpSupport.openTheMosquesTabAndAllowLocationAccess"),
     },
     {
-      question: 'Is the app really ad-free?',
-      answer: 'Yes! Muslim Sync is 100% ad-free. We believe in providing a clean, distraction-free experience for all users.',
+      question: tr("helpSupport.isTheAppReallyAdFree"),
+      answer: tr("helpSupport.yesMuslimSyncIs100AdFreeWe"),
     },
     {
-      question: 'How can I provide feedback?',
-      answer: 'We welcome all feedback! Send us an email at contact@muslimsync.com with your suggestions. InshaAllah, we will continue to add features based on your needs.',
+      question: tr("helpSupport.howCanIProvideFeedback"),
+      answer: tr("helpSupport.weWelcomeAllFeedbackSendUsAnEmail"),
     },
   ];
 
@@ -171,36 +170,32 @@ export default function HelpSupportScreen() {
             onPress={() => navigation.goBack()}
             style={dynamicStyles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={dynamicStyles.headerTitle}>Help & Support</Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("navigation.help", { ns: 'common' })}</Text>
         </View>
 
         <ScrollView style={dynamicStyles.content} showsVerticalScrollIndicator={true}>
           <View style={dynamicStyles.section}>
-            <Text style={dynamicStyles.sectionTitle}>Get Help</Text>
-            <Text style={dynamicStyles.sectionText}>
-              Need assistance? We're here to help! Reach out to us through email and we'll get back to you as soon as possible.
-            </Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("helpSupport.getHelp")}</Text>
+            <Text style={dynamicStyles.sectionText}>{tr("helpSupport.needAssistanceWeReHereToHelpReach")}</Text>
           </View>
 
           <View style={dynamicStyles.contactCard}>
-            <Text style={dynamicStyles.contactTitle}>Contact Us</Text>
-            <Text style={dynamicStyles.sectionText}>
-              Have a question, suggestion, or need help? Send us an email and we'll respond promptly.
-            </Text>
+            <Text style={dynamicStyles.contactTitle}>{tr("helpSupport.contactUs")}</Text>
+            <Text style={dynamicStyles.sectionText}>{tr("helpSupport.haveAQuestionSuggestionOrNeedHelpSend")}</Text>
             <TouchableOpacity
               style={dynamicStyles.emailButton}
               onPress={handleEmailPress}
             >
               <Ionicons name="mail" size={24} color={colors.text} />
               <Text style={dynamicStyles.emailText}>contact@muslimsync.com</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <View style={dynamicStyles.section}>
-            <Text style={dynamicStyles.sectionTitle}>Frequently Asked Questions</Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("helpSupport.frequentlyAskedQuestions")}</Text>
             
             {faqs.map((faq, index) => (
               <View key={index} style={dynamicStyles.faqItem}>
@@ -211,17 +206,15 @@ export default function HelpSupportScreen() {
           </View>
 
           <View style={[dynamicStyles.contactCard, { marginTop: 10 }]}>
-            <Text style={dynamicStyles.contactTitle}>More Information</Text>
-            <Text style={[dynamicStyles.sectionText, { marginBottom: 15 }]}>
-              Visit{' '}
+            <Text style={dynamicStyles.contactTitle}>{tr("helpSupport.moreInformation")}</Text>
+            <Text style={[dynamicStyles.sectionText, { marginBottom: 15 }]}>{tr("about.visit")}{' '}
               <Text 
                 style={{ color: '#007AFF', textDecorationLine: 'underline' }}
                 onPress={() => Linking.openURL('https://muslimsync.com')}
               >
                 muslimsync.com
               </Text>
-              {' '}for more information
-            </Text>
+              {' '}{tr("about.forMoreInformation")}</Text>
           </View>
         </ScrollView>
       </View>

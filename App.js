@@ -4,9 +4,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, I18nManager } from 'react-native';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { loadArabicFonts } from './src/utils/fontLoader';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { LocaleProvider, useAppLocale } from './src/context/LocaleContext';
+import { tr } from './src/i18n';
+import LanguageScreen from './src/screens/LanguageScreen';
 
 // Screens
 import PrayerTimesScreen from './src/screens/PrayerTimesScreen';
@@ -27,10 +31,13 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 function HomeStack() {
+  const { isRTL } = useAppLocale();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        gestureDirection: isRTL === I18nManager.isRTL ? 'horizontal' : 'horizontal-inverted',
+        cardStyle: { direction: isRTL ? 'rtl' : 'ltr' },
       }}
     >
       <Stack.Screen 
@@ -46,10 +53,13 @@ function HomeStack() {
 }
 
 function MosqueStack() {
+  const { isRTL } = useAppLocale();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        gestureDirection: isRTL === I18nManager.isRTL ? 'horizontal' : 'horizontal-inverted',
+        cardStyle: { direction: isRTL ? 'rtl' : 'ltr' },
       }}
     >
       <Stack.Screen 
@@ -65,10 +75,13 @@ function MosqueStack() {
 }
 
 function SettingsStack() {
+  const { isRTL } = useAppLocale();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        gestureDirection: isRTL === I18nManager.isRTL ? 'horizontal' : 'horizontal-inverted',
+        cardStyle: { direction: isRTL ? 'rtl' : 'ltr' },
       }}
     >
       <Stack.Screen 
@@ -79,6 +92,7 @@ function SettingsStack() {
         name="Theme" 
         component={ThemeScreen}
       />
+      <Stack.Screen name="Language" component={LanguageScreen} />
       <Stack.Screen 
         name="Location" 
         component={LocationSettingsScreen}
@@ -101,6 +115,7 @@ function SettingsStack() {
 
 function AppContent() {
   const { isDark, colors, themeMode } = useTheme();
+  const { isRTL } = useAppLocale();
   
   return (
     <NavigationContainer
@@ -146,6 +161,7 @@ function AppContent() {
           tabBarStyle: {
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
+            direction: isRTL ? 'rtl' : 'ltr',
           },
           headerShown: false,
         })}
@@ -153,29 +169,50 @@ function AppContent() {
         <Tab.Screen 
           name="Home" 
           component={HomeStack}
+          options={{ tabBarLabel: tr('navigation.home', { ns: 'common' }) }}
         />
         <Tab.Screen 
           name="Quran" 
           component={QuranScreen}
+          options={{ tabBarLabel: tr('navigation.quran', { ns: 'common' }) }}
         />
         <Tab.Screen 
           name="Dhikr" 
           component={DhikrScreen}
+          options={{ tabBarLabel: tr('navigation.dhikr', { ns: 'common' }) }}
         />
         <Tab.Screen 
           name="Dua" 
           component={DuaScreen}
+          options={{ tabBarLabel: tr('navigation.duas', { ns: 'common' }) }}
         />
         <Tab.Screen 
           name="Mosques" 
           component={MosqueStack}
+          options={{ tabBarLabel: tr('navigation.mosques', { ns: 'common' }) }}
         />
         <Tab.Screen 
           name="Settings" 
           component={SettingsStack}
+          options={{ tabBarLabel: tr('navigation.settings', { ns: 'common' }) }}
         />
       </Tab.Navigator>
     </NavigationContainer>
+  );
+}
+
+function LocalizedApp() {
+  const { ready, needsChoice, isRTL } = useAppLocale();
+  const { colors } = useTheme();
+  if (!ready) {
+    return <View style={{ flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.text} /></View>;
+  }
+  // Direction belongs to the chosen app language. Explicit subtree direction
+  // avoids forcing a global native RTL flag or requiring an application restart.
+  return (
+    <View style={{ flex: 1, direction: isRTL ? 'rtl' : 'ltr' }}>
+      {needsChoice ? <LanguageScreen onboarding /> : <AppContent />}
+    </View>
   );
 }
 
@@ -197,8 +234,12 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <LocaleProvider>
+          <LocalizedApp />
+        </LocaleProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

@@ -1,22 +1,21 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCachedLocation, clearLocationCache } from '../utils/locationCache';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function LocationSettingsScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const [currentCity, setCurrentCity] = useState(null);
@@ -71,7 +70,7 @@ export default function LocationSettingsScreen() {
       const newLocation = await getCachedLocation(true);
       
       if (!newLocation) {
-        Alert.alert('Error', 'Failed to get location. Please try again.');
+        Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToGetLocationPleaseTryAgain"));
         setUpdating(false);
         return;
       }
@@ -97,19 +96,19 @@ export default function LocationSettingsScreen() {
           setCurrentCity(city);
           setCurrentLocation({ latitude, longitude });
           
-          Alert.alert('Success', 'Location updated successfully!');
+          Alert.alert(tr("dua.success"), tr("locationSettings.locationUpdatedSuccessfully"));
         } else {
-          Alert.alert('Error', 'Could not determine city name from location.');
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.couldNotDetermineCityNameFromLocation"));
         }
       } catch (geocodeError) {
         if (geocodeError.message && geocodeError.message.includes('rate limit')) {
-          Alert.alert('Rate Limit', 'Too many requests. Please try again in a few minutes.');
+          Alert.alert(tr("locationSettings.rateLimit"), tr("locationSettings.tooManyRequestsPleaseTryAgainInA"));
         } else {
-          Alert.alert('Error', 'Failed to get city name. Please try again.');
+          Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToGetCityNamePleaseTryAgain"));
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to update location. Please try again.');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToUpdateLocationPleaseTryAgain"));
     } finally {
       setUpdating(false);
     }
@@ -135,7 +134,7 @@ export default function LocationSettingsScreen() {
     },
     backButton: {
       padding: 5,
-      marginRight: 10,
+      marginEnd: 10,
     },
     headerTitle: {
       fontSize: 24,
@@ -172,7 +171,7 @@ export default function LocationSettingsScreen() {
     infoLabel: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginRight: 10,
+      marginEnd: 10,
       minWidth: 100,
     },
     infoValue: {
@@ -201,7 +200,7 @@ export default function LocationSettingsScreen() {
       color: isDark ? '#000000' : '#FFFFFF',
       fontSize: 16,
       fontWeight: '600',
-      marginLeft: 10,
+      marginStart: 10,
     },
     emptyState: {
       padding: 40,
@@ -224,9 +223,9 @@ export default function LocationSettingsScreen() {
               onPress={() => navigation.goBack()}
               style={dynamicStyles.backButton}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
+              <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
             </TouchableOpacity>
-            <Text style={dynamicStyles.headerTitle}>Location</Text>
+            <Text style={dynamicStyles.headerTitle}>{tr("settings.location", { ns: 'common' })}</Text>
           </View>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={colors.text} />
@@ -244,33 +243,33 @@ export default function LocationSettingsScreen() {
             onPress={() => navigation.goBack()}
             style={dynamicStyles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={dynamicStyles.headerTitle}>Location</Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("settings.location", { ns: 'common' })}</Text>
         </View>
 
         <ScrollView style={dynamicStyles.content}>
           <View style={dynamicStyles.section}>
-            <Text style={dynamicStyles.sectionTitle}>Current Location</Text>
+            <Text style={dynamicStyles.sectionTitle}>{tr("locationSettings.currentLocation")}</Text>
             
             {currentCity || currentLocation ? (
               <>
                 {currentCity && (
                   <View style={dynamicStyles.infoRow}>
-                    <Text style={dynamicStyles.infoLabel}>City:</Text>
+                    <Text style={dynamicStyles.infoLabel}>{tr("locationSettings.city")}</Text>
                     <Text style={dynamicStyles.infoValue}>{currentCity}</Text>
                   </View>
                 )}
                 {currentLocation && (
                   <>
                     <View style={dynamicStyles.infoRow}>
-                      <Text style={dynamicStyles.infoLabel}>Latitude:</Text>
+                      <Text style={dynamicStyles.infoLabel}>{tr("locationSettings.latitude")}</Text>
                       <Text style={dynamicStyles.infoValue}>
                         {currentLocation.latitude.toFixed(6)}
                       </Text>
                     </View>
                     <View style={dynamicStyles.infoRow}>
-                      <Text style={dynamicStyles.infoLabel}>Longitude:</Text>
+                      <Text style={dynamicStyles.infoLabel}>{tr("locationSettings.longitude")}</Text>
                       <Text style={dynamicStyles.infoValue}>
                         {currentLocation.longitude.toFixed(6)}
                       </Text>
@@ -281,9 +280,7 @@ export default function LocationSettingsScreen() {
             ) : (
               <View style={dynamicStyles.emptyState}>
                 <Ionicons name="location-outline" size={48} color={colors.textSecondary} />
-                <Text style={dynamicStyles.emptyStateText}>
-                  No location stored yet.{'\n'}Click Update to set your location.
-                </Text>
+                <Text style={dynamicStyles.emptyStateText}>{tr("locationSettings.noLocationStoredYetClickUpdateToSet")}</Text>
               </View>
             )}
 
@@ -297,17 +294,15 @@ export default function LocationSettingsScreen() {
               ) : (
                 <>
                   <Ionicons name="refresh" size={24} color={isDark ? '#000000' : '#FFFFFF'} />
-                  <Text style={dynamicStyles.updateButtonText}>Update Location</Text>
+                  <Text style={dynamicStyles.updateButtonText}>{tr("locationSettings.updateLocation")}</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
 
           <View style={dynamicStyles.section}>
-            <Text style={[dynamicStyles.sectionTitle, { marginBottom: 10 }]}>About</Text>
-            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>
-              Your location is used to calculate accurate prayer times. The city name is displayed on the prayer times screen for your reference.
-            </Text>
+            <Text style={[dynamicStyles.sectionTitle, { marginBottom: 10 }]}>{tr("navigation.about", { ns: 'common' })}</Text>
+            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{tr("locationSettings.yourLocationIsUsedToCalculateAccuratePrayer")}</Text>
           </View>
         </ScrollView>
       </View>

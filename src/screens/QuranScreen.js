@@ -1,19 +1,9 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  FlatList,
-  ActivityIndicator,
-  Alert,
-  Share,
-  Platform,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Alert, Share, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import QuranDownloadModal from '../components/QuranDownloadModal';
@@ -32,14 +22,22 @@ import {
   getSurahTranslation,
   TRANSLATIONS,
   RECITERS,
+  getReciterName,
 } from '../utils/quranStorage';
 
 import { SURAHS } from '../data/surahs';
 import { getFontFamily } from '../utils/fontLoader';
+import { tr, formatNumber } from '../i18n';
+import quranSources from '../i18n/quran-sources.cjs';
+const { getTranslationEndpoints } = quranSources;
+import { useAppLocale } from '../context/LocaleContext';
+
 
 const VERSES_PER_PAGE = 20; // Pagination
 
 export default function QuranScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSurah, setSelectedSurah] = useState(null);
@@ -106,14 +104,14 @@ export default function QuranScreen() {
     const reciter = RECITERS.find(r => r.id === reciterId);
     if (reciter) {
       if (reciter.id === 'arabic_english_r2') {
-        setRecitationLanguageLabel(`Arabic & English recitation – ${reciter.name}`);
+        setRecitationLanguageLabel(tr('quran.recitationBilingual', { name: getReciterName(reciter) }));
       } else {
-        setRecitationLanguageLabel(`Arabic recitation – ${reciter.name}`);
+        setRecitationLanguageLabel(tr('quran.recitationArabic', { name: getReciterName(reciter) }));
       }
       return;
     }
     setRecitationLanguageLabel(null);
-  }, [reciterId]);
+  }, [reciterId, locale]);
 
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
@@ -155,6 +153,8 @@ export default function QuranScreen() {
           let surahData = await getSurahVerses(selectedSurah.number);
           // Validate cached data
           if (surahData && Array.isArray(surahData) && surahData.length > 0) {
+            // Generic Arabic caches do not record a translation edition.
+            surahData = surahData.map((verse) => ({ ...verse, translation: null }));
             // If translation is selected, check if it's downloaded for THIS surah and merge it
             if (translationId) {
               const downloadedTranslation = await getSurahTranslation(selectedSurah.number, translationId);
@@ -164,38 +164,15 @@ export default function QuranScreen() {
                   const translationVerse = downloadedTranslation.find(t => t.number === verse.number);
                   return {
                     ...verse,
-                    translation: translationVerse ? translationVerse.text : verse.translation,
+                    translation: translationVerse ? translationVerse.text : null,
                   };
                 });
               } else {
                 // Translation is selected but NOT downloaded for this surah - fetch only this surah from API
                 try {
-                  // Map translation IDs to GitHub API folder names
-                  const translationResourceMap = {
-                    'en.sahih': { alquran: 'en.sahih', qurancom: '131', github: 'eng-muhammadtaqiudd' },
-                    'en.pickthall': { alquran: 'en.pickthall', qurancom: '19', github: 'eng-marmadukepickth' },
-                    'en.yusufali': { alquran: 'en.yusufali', qurancom: '20', github: 'eng-yusufaliorig' },
-                    'en.ahmedali': { alquran: 'en.ahmedali', qurancom: '163', github: 'eng-ahmedali' },
-                    'en.khattab': { alquran: 'en.khattab', qurancom: null, github: 'eng-mustafakhattaba' },
-                    'ur.maududi': { alquran: 'ur.maududi', qurancom: '95', github: 'urd-abulaalamaududi' },
-                    'fr.hamidullah': { alquran: 'fr.hamidullah', qurancom: '50', github: 'fra-muhammadhamidul' },
-                    'es.borneo': { alquran: 'es.borneo', qurancom: '142', github: 'spa-raulgonzalezbor' },
-                  };
-                  
-                  const resources = translationResourceMap[translationId] || { alquran: translationId, qurancom: null, github: translationId };
-                  
-                  // Use GitHub CDN first (most reliable)
-                  const apiEndpoints = [
-                    `https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/${resources.github}/${selectedSurah.number}.json`,
-                    `https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/${resources.github}/${selectedSurah.number}.json`,
-                    `https://api.alquran.cloud/v1/surah/${selectedSurah.number}/editions/${resources.alquran}`,
-                  ];
-                  
-                  if (resources.qurancom) {
-                    apiEndpoints.push(`https://api.quran.com/api/v4/quran/translations/${resources.qurancom}?chapter_number=${selectedSurah.number}`);
-                  }
+                  const apiEndpoints = getTranslationEndpoints(translationId, selectedSurah.number);
 
-                  for (const url of apiEndpoints) {
+                  for (const { url } of apiEndpoints) {
                     try {
                       const controller = new AbortController();
                       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -325,7 +302,7 @@ export default function QuranScreen() {
           format: 'alquran',
         },
         {
-          url: `https://api.alquran.cloud/v1/surah/${surahNum}/editions/quran-uthmani`,
+          url: `https://api.alquran.cloud/v1/surah/${surahNum}/quran-uthmani`,
           format: 'alquran',
         },
         {
@@ -549,108 +526,7 @@ export default function QuranScreen() {
         // If translation is selected but not downloaded for THIS surah, fetch only THIS surah from API
         if (translationId && !downloadedTranslation) {
           try {
-            // Fetch translation from API for THIS surah only
-            // Use multiple reliable APIs with different formats
-            const apiEndpoints = [];
-            
-            // Map translation IDs to different API formats
-            // GitHub API uses specific folder names - verified from fawazahmed0/quran-api
-            const translationMap = {
-              'en.sahih': {
-                alquran: 'en.sahih',
-                qurancom: '131',
-                github: 'eng-muhammadtaqiudd', // Sahih International
-                tanzil: 'en.sahih'
-              },
-              'en.pickthall': {
-                alquran: 'en.pickthall',
-                qurancom: '19',
-                github: 'eng-marmadukepickth', // Pickthall
-                tanzil: 'en.pickthall'
-              },
-              'en.yusufali': {
-                alquran: 'en.yusufali',
-                qurancom: '20',
-                github: 'eng-yusufaliorig', // Yusuf Ali
-                tanzil: 'en.yusufali'
-              },
-              'en.ahmedali': {
-                alquran: 'en.ahmedali',
-                qurancom: '163',
-                github: 'eng-ahmedali', // Ahmed Ali
-                tanzil: 'en.ahmedali'
-              },
-              'en.khattab': {
-                alquran: 'en.khattab',
-                qurancom: null,
-                github: 'eng-mustafakhattaba', // Clear Quran by Mustafa Khattab
-                tanzil: 'en.khattab'
-              },
-              'ur.maududi': {
-                alquran: 'ur.maududi',
-                qurancom: '95',
-                github: 'urd-abulaalamaududi', // Maududi Urdu
-                tanzil: 'ur.maududi'
-              },
-              'fr.hamidullah': {
-                alquran: 'fr.hamidullah',
-                qurancom: '50',
-                github: 'fra-muhammadhamidul', // Hamidullah French
-                tanzil: 'fr.hamidullah'
-              },
-              'es.borneo': {
-                alquran: 'es.borneo',
-                qurancom: '142',
-                github: 'spa-raulgonzalezbor', // Borneo Spanish
-                tanzil: 'es.borneo'
-              },
-            };
-            
-            const resources = translationMap[translationId] || { alquran: translationId, qurancom: null, github: translationId, tanzil: translationId };
-            
-            // Priority 1: GitHub CDN (most reliable and fast)
-            apiEndpoints.push({
-              url: `https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/${resources.github}/${selectedSurah.number}.json`,
-              format: 'github'
-            });
-            
-            // Priority 2: Raw GitHub
-            apiEndpoints.push({
-              url: `https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/${resources.github}/${selectedSurah.number}.json`,
-              format: 'github'
-            });
-            
-            // Priority 3: Al-Quran Cloud
-            apiEndpoints.push({
-              url: `https://api.alquran.cloud/v1/surah/${selectedSurah.number}/editions/${resources.alquran}`,
-              format: 'alquran'
-            });
-            
-            // Priority 4: Quran.com API
-            if (resources.qurancom) {
-              apiEndpoints.push({
-                url: `https://api.quran.com/api/v4/quran/translations/${resources.qurancom}?chapter_number=${selectedSurah.number}`,
-                format: 'qurancom'
-              });
-            }
-            
-            // Priority 5: Alternative GitHub mirror
-            apiEndpoints.push({
-              url: `https://unpkg.com/quran-json@1.0.1/json/translations/${resources.github}/${selectedSurah.number}.json`,
-              format: 'github'
-            });
-            
-            // Priority 6: Simple JSON API (direct format)
-            apiEndpoints.push({
-              url: `https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/${resources.github}/${selectedSurah.number}.min.json`,
-              format: 'github'
-            });
-            
-            // Priority 7: Alternative CDN
-            apiEndpoints.push({
-              url: `https://cdn.statically.io/gh/fawazahmed0/quran-api/1/editions/${resources.github}/${selectedSurah.number}.json`,
-              format: 'github'
-            });
+            const apiEndpoints = getTranslationEndpoints(translationId, selectedSurah.number);
 
             let translationFetched = false;
             let lastError = null;
@@ -824,9 +700,9 @@ export default function QuranScreen() {
             if (!translationFetched && translationId && selectedSurah) {
               // Show error to user if translation failed to load
               Alert.alert(
-                'Translation Error',
-                `Failed to load translation for ${selectedSurah.name || 'this surah'}. ${lastError ? `Error: ${lastError}` : 'Please check your internet connection and try again.'}`,
-                [{ text: 'OK' }]
+                tr("quran.translationError"),
+                tr("quran.failedToLoadTranslationForValueValue", { value1: selectedSurah.name || tr('quran.thisSurah'), value2: tr('quran.pleaseCheckYourInternetConnectionAndTryAgain') }),
+                [{ text: tr("quran.ok") }]
               );
             }
           } catch (error) {
@@ -961,9 +837,9 @@ export default function QuranScreen() {
         // Invalid API response structure
         setVerses([]); // Clear verses so user can retry
         Alert.alert(
-          'Connection Issue',
-          'Unable to load verses from the API. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
+          tr("quran.connectionIssue"),
+          tr("quran.unableToLoadVersesFromTheApiPlease"),
+          [{ text: tr("quran.ok") }]
         );
       }
     } catch (error) {
@@ -974,13 +850,13 @@ export default function QuranScreen() {
       const errorMessage = error.message || 'Unknown error';
       if (errorMessage.includes('timeout') || errorMessage.includes('Network') || errorMessage.includes('fetch')) {
         Alert.alert(
-          'Connection Error',
-          'Unable to connect to the server. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
+          tr("quran.connectionError"),
+          tr("quran.unableToConnectToTheServerPleaseCheck"),
+          [{ text: tr("quran.ok") }]
         );
       } else if (!errorMessage.includes('Empty')) {
         // Don't show alert for empty response errors (they're logged)
-        Alert.alert('Error', 'Failed to load verses. Please try again.');
+        Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.failedToLoadVersesPleaseTryAgain"));
       }
     } finally {
       setLoadingVerses(false);
@@ -990,29 +866,29 @@ export default function QuranScreen() {
   const handleDownload = async (reciter, translation) => {
     setReciterId(reciter);
     setTranslationId(translation);
-    Alert.alert('Info', 'Settings saved! You can now download surahs for offline use from the surah detail view.');
+    Alert.alert(tr("quran.info"), tr("quran.settingsSavedYouCanNowDownloadSurahsFor"));
   };
 
   const downloadSurah = async () => {
     if (!selectedSurah || !reciterId || !translationId) {
-      Alert.alert('Error', 'Please configure download settings first');
+      Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.pleaseConfigureDownloadSettingsFirst"));
       setShowDownloadModal(true);
       return;
     }
 
     Alert.alert(
-      'Download',
-      `Download ${selectedSurah.name} for offline use?`,
+      tr("actions.download", { ns: 'common' }),
+      tr("quran.downloadValueForOfflineUse", { value1: selectedSurah.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr("actions.cancel", { ns: 'common' }), style: 'cancel' },
         {
-          text: 'Download',
+          text: tr("actions.download", { ns: 'common' }),
           onPress: async () => {
             try {
               await loadSurahVerses(); // This will cache the verses
-              Alert.alert('Success', 'Surah downloaded successfully!');
+              Alert.alert(tr("dua.success"), tr("quran.surahDownloadedSuccessfully"));
             } catch (error) {
-              Alert.alert('Error', 'Failed to download surah');
+              Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.failedToDownloadSurah"));
             }
           },
         },
@@ -1044,10 +920,10 @@ export default function QuranScreen() {
 
   const shareVerse = async (verse) => {
     try {
-      const shareText = `${selectedSurah.name} - Verse ${verse.number}\n\n${verse.text}\n\n${verse.translation || ''}`;
+      const shareText = `${tr('quran.valueVerseValue', { value1: selectedSurah.name, value2: verse.number })}\n\n${verse.text}\n\n${verse.translation || ''}`;
       await Share.share({
         message: shareText,
-        title: `${selectedSurah.name} - Verse ${verse.number}`,
+        title: tr("quran.valueVerseValue", { value1: selectedSurah.name, value2: verse.number }),
       });
     } catch (error) {
       // Error sharing (non-critical)
@@ -1099,14 +975,14 @@ export default function QuranScreen() {
       }}
     >
       <View style={[dynamicStyles.surahNumber, { backgroundColor: colors.iconBackground }]}>
-        <Text style={dynamicStyles.surahNumberText}>{item.number}</Text>
+        <Text style={dynamicStyles.surahNumberText}>{formatNumber(item.number)}</Text>
       </View>
       <View style={styles.surahInfo}>
         <Text style={dynamicStyles.surahName}>{item.name}</Text>
         <Text style={dynamicStyles.surahNameArabic}>{item.nameArabic}</Text>
-        <Text style={dynamicStyles.surahAyahs}>{item.ayahs} Ayahs</Text>
+        <Text style={dynamicStyles.surahAyahs}>{tr("quran.valueAyahs", { value1: item.ayahs })}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={24} color={colors.textSecondary} />
+      <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={24} color={colors.textSecondary} />
     </TouchableOpacity>
   );
 
@@ -1118,7 +994,7 @@ export default function QuranScreen() {
       <View style={dynamicStyles.verseCard}>
         <View style={styles.verseHeader}>
           <View style={dynamicStyles.verseNumberContainer}>
-            <Text style={dynamicStyles.verseNumber}>{verse.number}</Text>
+            <Text style={dynamicStyles.verseNumber}>{formatNumber(verse.number)}</Text>
           </View>
           <View style={styles.verseActions}>
             <TouchableOpacity
@@ -1147,7 +1023,7 @@ export default function QuranScreen() {
             fontFamily: getFontFamily(arabicFont),
           }
         ]}>{verse.text}</Text>
-        {showTranslation && verse.translation && verse.translation.trim() !== '' ? (
+        {showTranslation && translationId && verse.translation && verse.translation.trim() !== '' ? (
           <>
             <Text style={dynamicStyles.verseTranslation}>{verse.translation}</Text>
             {translationId && (
@@ -1157,9 +1033,7 @@ export default function QuranScreen() {
             )}
           </>
         ) : showTranslation && translationId && !verse.translation ? (
-          <Text style={[dynamicStyles.verseTranslation, { fontStyle: 'italic', opacity: 0.7 }]}>
-            Translation loading...
-          </Text>
+          <Text style={[dynamicStyles.verseTranslation, { fontStyle: 'italic', opacity: 0.7 }]}>{tr('quran.translationUnavailable', { ns: 'common' })}</Text>
         ) : null}
       </View>
     );
@@ -1244,7 +1118,7 @@ export default function QuranScreen() {
       borderRadius: 22.5,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     surahNumberText: {
       color: colors.text,
@@ -1258,6 +1132,7 @@ export default function QuranScreen() {
       marginBottom: 3,
     },
     surahNameArabic: {
+      writingDirection: 'rtl',
       fontSize: 16,
       color: colors.text,
       marginBottom: 3,
@@ -1282,7 +1157,7 @@ export default function QuranScreen() {
     },
     surahHeaderInfo: {
       flex: 1,
-      marginLeft: 15,
+      marginStart: 15,
     },
     surahHeaderName: {
       fontSize: 22,
@@ -1291,12 +1166,13 @@ export default function QuranScreen() {
       marginBottom: 5,
     },
     surahHeaderArabic: {
+      writingDirection: 'rtl',
       fontSize: 18,
       color: colors.textSecondary,
     },
     headerActionButton: {
       padding: 8,
-      marginLeft: 10,
+      marginStart: 10,
     },
     bismillah: {
       backgroundColor: colors.card,
@@ -1319,6 +1195,7 @@ export default function QuranScreen() {
       writingDirection: 'rtl',
     },
     bismillahTranslation: {
+      writingDirection: 'ltr',
       fontSize: 14,
       color: colors.textSecondary,
       fontStyle: 'italic',
@@ -1345,11 +1222,12 @@ export default function QuranScreen() {
       writingDirection: 'rtl',
     },
     verseTranslation: {
+      writingDirection: translationId?.startsWith('ur.') || translationId?.startsWith('ar.') ? 'rtl' : 'ltr',
       fontSize: 16,
       color: colors.textSecondary,
       marginTop: 10,
       lineHeight: 24,
-      textAlign: 'left',
+      textAlign: translationId?.startsWith('ur.') || translationId?.startsWith('ar.') ? 'right' : 'left',
     },
     translationName: {
       fontSize: 11,
@@ -1432,7 +1310,7 @@ export default function QuranScreen() {
                 }}
                 style={styles.backButton}
               >
-                <Ionicons name="arrow-back" size={24} color={colors.text} />
+                <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
               </TouchableOpacity>
               <View style={dynamicStyles.surahHeaderInfo}>
                 <Text style={dynamicStyles.surahHeaderName}>{selectedSurah.name}</Text>
@@ -1451,7 +1329,7 @@ export default function QuranScreen() {
             <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
             <TextInput
               style={dynamicStyles.searchInput}
-              placeholder="Search verses..."
+              placeholder={tr("quran.searchVerses")}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor={colors.textSecondary}
@@ -1466,27 +1344,19 @@ export default function QuranScreen() {
           {loadingVerses ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.text} />
-              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-                Loading verses...
-              </Text>
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{tr("quran.loadingVerses")}</Text>
             </View>
           ) : verses.length === 0 ? (
             <View style={styles.loadingContainer}>
               <Ionicons name="cloud-download-outline" size={64} color={colors.textSecondary} />
-              <Text style={[styles.loadingText, { color: colors.text, marginTop: 20, fontSize: 18 }]}>
-                Verses not loaded
-              </Text>
-              <Text style={[styles.loadingText, { color: colors.textSecondary, marginTop: 10, textAlign: 'center', paddingHorizontal: 40 }]}>
-                Tap the button below to load verses from the internet
-              </Text>
+              <Text style={[styles.loadingText, { color: colors.text, marginTop: 20, fontSize: 18 }]}>{tr("quran.versesNotLoaded")}</Text>
+              <Text style={[styles.loadingText, { color: colors.textSecondary, marginTop: 10, textAlign: 'center', paddingHorizontal: 40 }]}>{tr("quran.tapTheButtonBelowToLoadVersesFrom")}</Text>
               <TouchableOpacity
                 style={[dynamicStyles.loadButton, { backgroundColor: colors.text, marginTop: 20 }]}
                 onPress={loadSurahVerses}
               >
                 <Ionicons name="refresh" size={20} color={colors.background} />
-                <Text style={[dynamicStyles.loadButtonText, { color: colors.background }]}>
-                  Load Verses
-                </Text>
+                <Text style={[dynamicStyles.loadButtonText, { color: colors.background }]}>{tr("quran.loadVerses")}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1521,9 +1391,9 @@ export default function QuranScreen() {
                       ]}>
                         بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
                       </Text>
-                      <Text style={dynamicStyles.bismillahTranslation}>
+                      {locale === 'en' && <Text style={dynamicStyles.bismillahTranslation}>
                         In the name of Allah, the Most Gracious, the Most Merciful
-                      </Text>
+                      </Text>}
                     </View>
                   </>
                 }
@@ -1538,11 +1408,9 @@ export default function QuranScreen() {
                         onPress={() => setCurrentPage(Math.max(1, currentPage - 1))}
                         disabled={currentPage === 1}
                       >
-                        <Text style={dynamicStyles.paginationText}>Previous</Text>
+                        <Text style={dynamicStyles.paginationText}>{tr("quran.previous")}</Text>
                       </TouchableOpacity>
-                      <Text style={dynamicStyles.pageInfo}>
-                        Page {currentPage} of {totalPages}
-                      </Text>
+                      <Text style={dynamicStyles.pageInfo}>{tr("quran.pageValueOfValue", { value1: currentPage, value2: totalPages })}</Text>
                       <TouchableOpacity
                         style={[
                           dynamicStyles.paginationButton,
@@ -1551,7 +1419,7 @@ export default function QuranScreen() {
                         onPress={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                         disabled={currentPage === totalPages}
                       >
-                        <Text style={dynamicStyles.paginationText}>Next</Text>
+                        <Text style={dynamicStyles.paginationText}>{tr("quran.next")}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null
@@ -1560,9 +1428,7 @@ export default function QuranScreen() {
                   searchQuery.trim() ? (
                     <View style={styles.emptyContainer}>
                       <Ionicons name="search-outline" size={48} color={colors.textSecondary} />
-                      <Text style={[styles.emptyText, { color: colors.text }]}>
-                        No verses found
-                      </Text>
+                      <Text style={[styles.emptyText, { color: colors.text }]}>{tr("quran.noVersesFound")}</Text>
                     </View>
                   ) : null
                 }
@@ -1618,14 +1484,12 @@ export default function QuranScreen() {
       <View style={dynamicStyles.container}>
         <View style={dynamicStyles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={dynamicStyles.headerTitle}>The Holy Quran</Text>
-            <Text style={dynamicStyles.headerSubtitle}>
-              {SURAHS.length} Surahs
-            </Text>
+            <Text style={dynamicStyles.headerTitle}>{tr("quran.theHolyQuran")}</Text>
+            <Text style={dynamicStyles.headerSubtitle}>{tr("quran.valueSurahs", { value1: SURAHS.length })}</Text>
           </View>
           <TouchableOpacity
             onPress={() => setShowSettingsDrawer(true)}
-            style={{ padding: 8, marginLeft: 10 }}
+            style={{ padding: 8, marginStart: 10 }}
           >
             <Ionicons name="menu" size={28} color={colors.text} />
           </TouchableOpacity>
@@ -1635,7 +1499,7 @@ export default function QuranScreen() {
           <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={dynamicStyles.searchInput}
-            placeholder="Search surahs..."
+            placeholder={tr("quran.searchSurahs")}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor={colors.textSecondary}
@@ -1658,12 +1522,8 @@ export default function QuranScreen() {
             searchQuery.trim() ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="search-outline" size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.text }]}>
-                  No surahs found
-                </Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-                  Try a different search term
-                </Text>
+                <Text style={[styles.emptyText, { color: colors.text }]}>{tr("quran.noSurahsFound")}</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>{tr("quran.tryADifferentSearchTerm")}</Text>
               </View>
             ) : null
           }
@@ -1697,9 +1557,7 @@ export default function QuranScreen() {
       {showBookmarks && (
         <View style={[styles.bookmarksModal, { backgroundColor: colors.surface }]}>
           <View style={[styles.bookmarksHeader, { backgroundColor: colors.cardSecondary, borderBottomColor: colors.borderVisible, borderBottomWidth: 1 }]}>
-            <Text style={[styles.bookmarksTitle, { color: colors.text }]}>
-              Bookmarks ({bookmarks.length})
-            </Text>
+            <Text style={[styles.bookmarksTitle, { color: colors.text }]}>{tr("quran.bookmarksValue", { value1: bookmarks.length })}</Text>
             <TouchableOpacity onPress={() => setShowBookmarks(false)}>
               <Ionicons name="close" size={24} color={colors.text} />
             </TouchableOpacity>
@@ -1724,9 +1582,7 @@ export default function QuranScreen() {
                 }}
               >
                 <View style={styles.bookmarkContent}>
-                  <Text style={[styles.bookmarkSurah, { color: colors.text }]}>
-                    {item.surahName} - Verse {item.verseNumber}
-                  </Text>
+                  <Text style={[styles.bookmarkSurah, { color: colors.text }]}>{tr("quran.valueVerseValue", { value1: item.surahName, value2: item.verseNumber })}</Text>
                   <Text
                     style={[styles.bookmarkText, { color: colors.textSecondary }]}
                     numberOfLines={2}
@@ -1747,12 +1603,8 @@ export default function QuranScreen() {
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Ionicons name="bookmark-outline" size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.text }]}>
-                  No bookmarks yet
-                </Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-                  Bookmark verses while reading to save them here
-                </Text>
+                <Text style={[styles.emptyText, { color: colors.text }]}>{tr("quran.noBookmarksYet")}</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>{tr("quran.bookmarkVersesWhileReadingToSaveThemHere")}</Text>
               </View>
             }
             contentContainerStyle={styles.bookmarksList}
@@ -1765,7 +1617,7 @@ export default function QuranScreen() {
 
 const styles = StyleSheet.create({
   searchIcon: {
-    marginRight: 10,
+    marginEnd: 10,
   },
   listContainer: {
     paddingBottom: 20,
@@ -1778,7 +1630,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backButton: {
-    marginRight: 15,
+    marginEnd: 15,
     padding: 5,
   },
   surahHeaderInfo: {
@@ -1815,7 +1667,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   downloadButtonText: {
-    marginLeft: 8,
+    marginStart: 8,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1830,7 +1682,7 @@ const styles = StyleSheet.create({
   },
   verseActionButton: {
     padding: 8,
-    marginLeft: 10,
+    marginStart: 10,
   },
   bookmarksModal: {
     position: 'absolute',
@@ -1864,7 +1716,7 @@ const styles = StyleSheet.create({
   },
   bookmarkContent: {
     flex: 1,
-    marginRight: 10,
+    marginEnd: 10,
   },
   bookmarkSurah: {
     fontSize: 16,

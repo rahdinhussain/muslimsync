@@ -1,0 +1,30 @@
+{
+  "actions": {
+    "save": "حفظ", "cancel": "إلغاء", "close": "إغلاق", "continue": "متابعة", "back": "رجوع",
+    "select": "اختيار", "search": "بحث", "retry": "إعادة المحاولة", "refresh": "تحديث", "done": "تم",
+    "download": "تنزيل", "delete": "حذف", "clear": "مسح", "reset": "إعادة ضبط", "confirm": "تأكيد",
+    "open": "فتح", "more": "المزيد", "view": "عرض", "edit": "تعديل", "add": "إضافة", "remove": "إزالة"
+  },
+  "navigation": {
+    "home": "الرئيسية", "quran": "القرآن", "dhikr": "الأذكار", "duas": "الأدعية", "mosques": "المساجد",
+    "settings": "الإعدادات", "about": "عن التطبيق", "help": "المساعدة والدعم", "contact": "تواصل معنا", "dashboard": "لوحة التحكم"
+  },
+  "language": {
+    "title": "اللغة", "choose": "اختر لغتك", "description": "اختر لغة استخدام Muslim Sync.",
+    "changeLater": "يمكنك تغييرها لاحقًا من الإعدادات.", "savedOnDevice": "يُحفظ اختيارك على هذا الجهاز.",
+    "recommended": "مقترحة", "current": "اللغة الحالية", "saveError": "تعذّر حفظ لغتك. يُرجى المحاولة مجددًا.",
+    "contentIndependent": "لترجمة القرآن وموقع مواقيت الصلاة إعدادات مستقلة.",
+    "switchLabel": "تغيير اللغة", "loading": "جارٍ إعداد لغتك…"
+  },
+  "prayers": {
+    "fajr": "الفجر", "sunrise": "الشروق", "dhuhr": "الظهر", "asr": "العصر", "maghrib": "المغرب",
+    "isha": "العشاء", "jumuah": "الجمعة", "athan": "الأذان", "iqama": "الإقامة", "nextPrayer": "الصلاة القادمة", "today": "اليوم"
+  },
+  "status": { "loading": "جارٍ التحميل…", "error": "حدث خطأ", "noResults": "لم يتم العثور على نتائج", "offline": "غير متصل", "saving": "جارٍ الحفظ…", "saved": "تم الحفظ", "unknown": "غير معروف" },
+  "settings": { "language": "اللغة", "theme": "المظهر", "location": "الموقع", "prayerCalculation": "حساب مواقيت الصلاة", "about": "عن Muslim Sync", "help": "المساعدة والدعم" },
+  "quran": {
+    "arabic": "العربية", "translation": "الترجمة", "transliteration": "النقل الصوتي", "reciter": "القارئ",
+    "translationUnavailable": "لا تتوفر ترجمة باللغة {{language}}. يُعرض النص الأصلي.",
+    "translationLanguage": "تُعرض الترجمة باللغة {{language}}", "translationEdition": "نسخة الترجمة"
+  }
+}

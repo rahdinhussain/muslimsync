@@ -1,17 +1,18 @@
+import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
+import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
+import { tr } from '../i18n';
+import { useAppLocale } from '../context/LocaleContext';
+
 
 export default function ThemeScreen() {
+  const { locale, isRTL } = useAppLocale();
+
   const { colors, isDark, themeMode, setThemeMode } = useTheme();
   const navigation = useNavigation();
 
@@ -39,7 +40,7 @@ export default function ThemeScreen() {
     },
     backButton: {
       padding: 5,
-      marginRight: 10,
+      marginEnd: 10,
     },
     headerTitle: {
       fontSize: 24,
@@ -72,7 +73,7 @@ export default function ThemeScreen() {
       backgroundColor: colors.iconBackground,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 15,
+      marginEnd: 15,
     },
     optionContent: {
       flex: 1,
@@ -88,27 +89,27 @@ export default function ThemeScreen() {
       color: colors.textSecondary,
     },
     radioButton: {
-      marginLeft: 10,
+      marginStart: 10,
     },
   });
 
   const themeOptions = [
     {
       id: 'automatic',
-      title: 'Automatic',
-      description: 'Follow system theme',
+      title: tr("theme.automatic"),
+      description: tr("theme.followSystemTheme"),
       icon: 'phone-portrait-outline',
     },
     {
       id: 'light',
-      title: 'Light',
-      description: 'Always use light mode',
+      title: tr("theme.light"),
+      description: tr("theme.alwaysUseLightMode"),
       icon: 'sunny-outline',
     },
     {
       id: 'dark',
-      title: 'Dark',
-      description: 'Always use dark mode',
+      title: tr("theme.dark"),
+      description: tr("theme.alwaysUseDarkMode"),
       icon: 'moon-outline',
     },
   ];
@@ -121,9 +122,9 @@ export default function ThemeScreen() {
             onPress={() => navigation.goBack()}
             style={dynamicStyles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={dynamicStyles.headerTitle}>Theme</Text>
+          <Text style={dynamicStyles.headerTitle}>{tr("settings.theme", { ns: 'common' })}</Text>
         </View>
 
         <ScrollView style={dynamicStyles.content} showsVerticalScrollIndicator={true}>
