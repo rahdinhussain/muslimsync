@@ -42,10 +42,7 @@
         "ACCESS_COARSE_LOCATION",
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS"
-      ],
-      "compileSdkVersion": 34,
-      "targetSdkVersion": 34,
-      "buildToolsVersion": "34.0.0"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
