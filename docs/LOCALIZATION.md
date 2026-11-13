@@ -105,7 +105,7 @@ Both iOS and Android production Hermes bundles exported successfully. Direct AlQ
 
 ## Native build and release
 
-`app.json` now configures the Expo SDK 54 `expo-localization` plugin with supported locales, RTL support, Android dynamic locale support, and native language files. The installed version 17.0.7 plugin supports these options. These native settings require a new development/production binary; publishing JavaScript alone does not add them to an already installed binary.
+`app.json` now configures the Expo SDK 54 `expo-localization` plugin with supported locales, RTL support, Android dynamic locale support, and native language files. The installed and locked plugin version 17.0.9 supports these options (`package.json` allows compatible versions through `~17.0.7`). These native settings require a new development/production binary; publishing JavaScript alone does not add them to an already installed binary.
 
 Before a store submission, increment `ios.buildNumber` and `android.versionCode` as appropriate. The existing production EAS profile has no automatic version increment configured. Build using the project's existing signing and distribution process.
 
