@@ -14,7 +14,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "environment": "preview"
     },
     "android-test": {
       "distribution": "internal",
@@ -40,4 +41,3 @@
     "production": {}
   }
 }
-
