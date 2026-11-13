@@ -2,7 +2,24 @@
 
 Use the existing `preview` profile to test the bundled app on Android and registered iOS devices. It includes the JavaScript bundle and does not require a Metro development server. The `development` profile is for development with Metro. The `simulator` profile produces an iOS Simulator build that requires a Mac to run.
 
-These commands create remote builds when explicitly run; they are not part of the localization checks or GitHub pull-request CI. An Expo account with project access, suitable signing configuration, and available build capacity must be in place first. No remote build or store submission has been started by the localization implementation.
+These commands create remote builds when explicitly run; they are not part of the localization checks or GitHub pull-request CI. An Expo account with project access, suitable signing configuration, and available build capacity must be in place first. The authorized preview-build results are recorded below; store submission remains a separate task.
+
+## Preview validation — 2026-11-13
+
+One Android and one iOS `preview` build were submitted from merged commit `12360cdfde39cb2736e9a42d26b20676d7efff31`, using the existing Free allowance and stored credentials. Both commands used `--non-interactive --freeze-credentials --no-wait --json`. The builds target the current `https://api.muslimsync.com` backend and retain app version `1.0.0` (Android version code `1`, iOS build number `2`).
+
+| Platform | Result | Build record |
+| --- | --- | --- |
+| Android | Finished successfully at 09:13 UTC; installable APK available | [Android preview](https://expo.dev/accounts/rahdi/projects/muslim-sync/builds/81e07f5d-52cc-40e8-965f-706a0ff9cc66) |
+| iOS | Failed during signing; no installable IPA | [iOS preview](https://expo.dev/accounts/rahdi/projects/muslim-sync/builds/dbc943be-30a5-4521-bd0c-ee65e572ca2d) |
+
+The [Android APK](https://expo.dev/artifacts/eas/THjRxbbcxTUu_PgYvaEdMZSI8CU0gkQGlSHhaHsZqLY.apk) is available for the device acceptance pass. A HEAD request to the artifact returned HTTP 200; the artifact size is 102,034,572 bytes. This confirms build completion and artifact availability, not runtime behavior on a physical device.
+
+Xcode reported: “Signing certificate is invalid” and “It may have been revoked or expired.” This is a generic invalid-certificate failure; the log does not establish revocation or expiry as the definitive cause. Stored EAS metadata still lists the current certificate expiry as 2026-12-20 and its ad hoc profile as active, with one enabled provisioned device. That metadata does not prove live Apple validity.
+
+A read-only check found one other stored distribution certificate for the same Apple team, with an expiry of 2027-01-10. An owner must check its live validity and select or create a matching provisioning profile through the normal signing workflow before an iOS retry. Its presence alone does not establish that it can sign this app. No Apple login, certificate/profile/device changes, signing-key replacement, or retry was performed during this validation.
+
+No store submission or physical-device QA has been performed. A successful native build still requires the localization acceptance pass below, including first-launch language choice, persistence, RTL behavior, and offline content checks on real devices.
 
 ## Existing project and profiles
 
