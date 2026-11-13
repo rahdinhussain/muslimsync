@@ -9,7 +9,10 @@
     "web": "expo start --web",
     "eas": "eas",
     "test:localization": "node --test tests/localization.test.cjs",
-    "check:locales": "node scripts/check-locales.mjs"
+    "check:locales": "node scripts/check-locales.mjs",
+    "check:client-config": "node scripts/check-public-client-config.cjs",
+    "test:client-config": "node --test tests/client-config.test.cjs",
+    "eas-build-post-install": "npm run check:client-config"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
