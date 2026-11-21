@@ -1,3 +1,4 @@
+import { DirectoryCountryProvider } from './src/context/DirectoryCountry';
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -55,6 +56,7 @@ function HomeStack() {
 function MosqueStack() {
   const { isRTL } = useAppLocale();
   return (
+    <DirectoryCountryProvider>
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
@@ -71,6 +73,7 @@ function MosqueStack() {
         component={MosqueScheduleScreen}
       />
     </Stack.Navigator>
+    </DirectoryCountryProvider>
   );
 }
 

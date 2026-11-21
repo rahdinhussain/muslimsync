@@ -1,3 +1,4 @@
+import { useDirectoryCountry } from '../context/DirectoryCountry';
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect } from 'react';
@@ -17,7 +18,9 @@ export default function MosqueScheduleScreen({ route }) {
 
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const { mosque } = route.params || {};
+  const country = useDirectoryCountry();
+  const requested = route.params?.mosque;
+  const mosque = requested?.country_code === country ? requested : null;
   const [prayerTimes, setPrayerTimes] = useState(null);
   const [loadingPrayerTimes, setLoadingPrayerTimes] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -171,16 +174,6 @@ export default function MosqueScheduleScreen({ route }) {
         marginStart: 8,
       },
   });
-
-  if (!mosque) {
-    return (
-      <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
-        <View style={dynamicStyles.container}>
-          <Text style={dynamicStyles.errorText}>{tr("mosqueSchedule.noMosqueInformationAvailable")}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   // Prayer name mappings with display order
   const getPrayerDisplayInfo = (key) => {
@@ -345,6 +338,16 @@ export default function MosqueScheduleScreen({ route }) {
       );
     }
   };
+
+  if (!mosque) {
+    return (
+      <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
+        <View style={dynamicStyles.container}>
+          <Text style={dynamicStyles.errorText}>{tr("mosqueSchedule.noMosqueInformationAvailable")}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const fullAddress = [
     mosque.address,

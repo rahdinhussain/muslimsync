@@ -403,5 +403,14 @@
     "month10": "Shawwal",
     "month11": "Dhul Qa’dah",
     "month12": "Dhul Hijjah"
+  },
+  "directory": {
+    "inCountry": "Mosques in {{country}}",
+    "empty": "No mosques are listed in {{country}} yet.",
+    "choose": "Choose your home country to see local mosques.",
+    "country": "Country",
+    "loading": "Finding your local directory…",
+    "loadFailed": "Your local mosque directory could not be loaded.",
+    "retry": "Try again"
   }
 }

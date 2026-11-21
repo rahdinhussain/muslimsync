@@ -1,3 +1,4 @@
+import { useDirectoryCountry, countryLabel } from '../context/DirectoryCountry';
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -21,11 +22,10 @@ export default function MosqueFinderScreen() {
   const [mosques, setMosques] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [filterCountry, setFilterCountry] = useState('');
+  const filterCountry = useDirectoryCountry();
   const [filterState, setFilterState] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [showCountryOptions, setShowCountryOptions] = useState(false);
   const [showStateOptions, setShowStateOptions] = useState(false);
   const [showCityOptions, setShowCityOptions] = useState(false);
   const [page, setPage] = useState(0);
@@ -39,8 +39,8 @@ export default function MosqueFinderScreen() {
     (async () => {
       const rows = [];
       for (let start=0;live; start+=500) {
-        const {data,error}=await supabase.from('mosque_locations').select('country,state,city')
-          .order('country').order('state').order('city').range(start,start+499);
+        const {data,error}=await supabase.from('directory_mosque_locations').select('state,city').eq('country_code',filterCountry)
+          .order('state').order('city').range(start,start+499);
         if (error || !live) return;
         rows.push(...(data || []));
         if ((data?.length || 0)<500) break;
@@ -48,7 +48,7 @@ export default function MosqueFinderScreen() {
       if (live) setFacets(rows);
     })().catch(() => {});
     return () => {live=false;};
-  }, []);
+  }, [filterCountry]);
   useEffect(() => {
     let live = true;
     if (activeQuery.current !== queryId) {
@@ -75,7 +75,6 @@ export default function MosqueFinderScreen() {
   }, [queryId, page]);
 
   const activeFilterCount =
-    (filterCountry ? 1 : 0) +
     (filterState ? 1 : 0) +
     (filterCity ? 1 : 0);
 
@@ -93,46 +92,10 @@ export default function MosqueFinderScreen() {
   }, [limitedMosques]);
 
   // Distinct lists for dropdowns
-  const availableCountries = useMemo(() => {
-    const set = new Set(
-      facets
-        .map((m) => m.country)
-        .filter((c) => c && c.trim().length > 0)
-    );
-    return Array.from(set).sort();
-  }, [facets]);
-
-  const availableStates = useMemo(() => {
-    if (!filterCountry) return [];
-    const set = new Set(
-      facets
-        .filter(
-          (m) =>
-            m.country &&
-            m.country.toLowerCase() === filterCountry.toLowerCase()
-        )
-        .map((m) => m.state)
-        .filter((s) => s && s.trim().length > 0)
-    );
-    return Array.from(set).sort();
-  }, [facets, filterCountry]);
-
-  const availableCities = useMemo(() => {
-    if (!filterCountry || !filterState) return [];
-    const set = new Set(
-      facets
-        .filter(
-          (m) =>
-            m.country &&
-            m.state &&
-            m.country.toLowerCase() === filterCountry.toLowerCase() &&
-            m.state.toLowerCase() === filterState.toLowerCase()
-        )
-        .map((m) => m.city)
-        .filter((c) => c && c.trim().length > 0)
-    );
-    return Array.from(set).sort();
-  }, [facets, filterCountry, filterState]);
+  const availableStates = useMemo(() => [...new Set(facets.map(row=>row.state).filter(Boolean))].sort(),[facets]);
+  const availableCities = useMemo(() => [...new Set(facets
+    .filter(row=>!filterState || row.state?.toLowerCase() === filterState.toLowerCase())
+    .map(row=>row.city).filter(Boolean))].sort(),[facets,filterState]);
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {
@@ -348,7 +311,7 @@ export default function MosqueFinderScreen() {
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
         <View style={dynamicStyles.container}>
           <View style={[dynamicStyles.header, { marginBottom: 0 }]}>
-            <Text style={dynamicStyles.headerTitle}>{tr("mosqueFinder.findMosques")}</Text>
+            <Text style={dynamicStyles.headerTitle}>{tr("directory.inCountry",{country:countryLabel(filterCountry,locale)})}</Text>
             <Text style={dynamicStyles.headerSubtitle}>{tr("mosqueFinder.loadingMosquesFromSupabase")}</Text>
           </View>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -364,7 +327,7 @@ export default function MosqueFinderScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <View style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.headerTitle}>{tr("mosqueFinder.findMosques")}</Text>
+        <Text style={dynamicStyles.headerTitle}>{tr("directory.inCountry",{country:countryLabel(filterCountry,locale)})}</Text>
         <Text style={dynamicStyles.headerSubtitle}>{tr("mosqueFinder.browseAndFilterMosques")}</Text>
       </View>
 
@@ -424,51 +387,6 @@ export default function MosqueFinderScreen() {
           >
             <Text style={dynamicStyles.filterTitle}>{tr("mosqueFinder.filters")}</Text>
 
-            <Text style={dynamicStyles.filterFieldLabel}>{tr("mosqueFinder.country")}</Text>
-            <View style={{ position: 'relative' }}>
-              <TouchableOpacity
-                style={dynamicStyles.dropdownField}
-                onPress={() => {
-                  setShowCountryOptions((v) => !v);
-                  setShowStateOptions(false);
-                  setShowCityOptions(false);
-                }}
-              >
-                <Text
-                  style={
-                    filterCountry
-                      ? dynamicStyles.dropdownValueText
-                      : dynamicStyles.dropdownPlaceholderText
-                  }
-                >
-                  {filterCountry || tr("mosqueFinder.selectCountry")}
-                </Text>
-                <Ionicons
-                  name={showCountryOptions ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-              {showCountryOptions && (
-                <ScrollView style={dynamicStyles.optionsList}>
-                  {availableCountries.map((country) => (
-                    <TouchableOpacity
-                      key={country}
-                      style={dynamicStyles.optionItem}
-                      onPress={() => {
-                        setFilterCountry(country);
-                        setFilterState('');
-                        setFilterCity('');
-                        setShowCountryOptions(false);
-                      }}
-                    >
-                      <Text style={dynamicStyles.optionText}>{country}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-
             <Text style={dynamicStyles.filterFieldLabel}>{tr("mosqueFinder.stateProvince")}</Text>
             <View style={{ position: 'relative' }}>
               <TouchableOpacity
@@ -476,7 +394,6 @@ export default function MosqueFinderScreen() {
                 onPress={() => {
                   if (!filterCountry) return;
                   setShowStateOptions((v) => !v);
-                  setShowCountryOptions(false);
                   setShowCityOptions(false);
                 }}
                 disabled={!filterCountry}
@@ -524,7 +441,6 @@ export default function MosqueFinderScreen() {
                 onPress={() => {
                   if (!filterCountry || !filterState) return;
                   setShowCityOptions((v) => !v);
-                  setShowCountryOptions(false);
                   setShowStateOptions(false);
                 }}
                 disabled={!filterCountry || !filterState}
@@ -568,10 +484,8 @@ export default function MosqueFinderScreen() {
               <TouchableOpacity
                 style={dynamicStyles.filterButton}
                 onPress={() => {
-                  setFilterCountry('');
                   setFilterState('');
                   setFilterCity('');
-                  setShowCountryOptions(false);
                   setShowStateOptions(false);
                   setShowCityOptions(false);
                 }}
@@ -596,7 +510,7 @@ export default function MosqueFinderScreen() {
         {filteredMosques.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="location-outline" size={64} color={colors.textTertiary} />
-            <Text style={dynamicStyles.emptyText}>{tr("mosqueFinder.noMosquesFound")}</Text>
+            <Text style={dynamicStyles.emptyText}>{searchQuery.trim() || filterState || filterCity ? tr("mosqueFinder.noMosquesFound") : tr("directory.empty",{country:countryLabel(filterCountry,locale)})}</Text>
             <Text style={[dynamicStyles.emptyText, { marginTop: 15, fontSize: 14, textAlign: 'center', paddingHorizontal: 30, lineHeight: 22 }]}>{tr("about.visit")}{' '}
               <Text 
                 style={{ color: '#007AFF', textDecorationLine: 'underline' }}
