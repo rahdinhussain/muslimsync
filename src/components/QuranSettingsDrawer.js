@@ -1,6 +1,7 @@
 import { LocalizedSafeAreaView as SafeAreaView } from './LocalizedPrimitives';
 import { LocalizedText as Text } from './LocalizedPrimitives';
-import React, { useState, useEffect } from 'react';
+import chapter from '../utils/quranChapter.cjs';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Modal, ScrollView, Switch, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -55,7 +56,15 @@ const ARABIC_FONTS = [
   const [downloadingTranslations, setDownloadingTranslations] = useState({}); // { translationId: { current: 0, total: 114 } }
   const [downloadingAudio, setDownloadingAudio] = useState({}); // { reciterId: { current: 0, total: 114 } }
   const [pausedAudio, setPausedAudio] = useState({}); // { reciterId: true/false }
-  const [audioDownloadControllers, setAudioDownloadControllers] = useState({}); // { reciterId: AbortController }
+  const audioJobs = useRef({});
+  const pausedSelections = useRef({});
+  const indexWrite = useRef(Promise.resolve());
+  useEffect(() => () => {
+    for (const job of Object.values(audioJobs.current)) {
+      job.stopped = true;
+      job.task?.cancelAsync().catch(() => {});
+    }
+  }, []);
   const [showSurahSelector, setShowSurahSelector] = useState(false);
   const [selectedReciterForSurah, setSelectedReciterForSurah] = useState(null);
   const [selectedSurahsForDownload, setSelectedSurahsForDownload] = useState([]);
@@ -79,49 +88,16 @@ const ARABIC_FONTS = [
     }
   }, [showSurahSelector, selectedReciterForSurah]);
 
-  const loadDownloadedSurahsPerReciter = async (specificReciterId = null) => {
-    try {
-      const downloadedAud = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO);
-      const audioList = downloadedAud ? JSON.parse(downloadedAud) : [];
-      
-      const allReciterIds = RECITERS.map(r => r.id);
-      // If a specific reciter is provided, check it; otherwise check all reciters
-      const recitersToCheck = specificReciterId 
-        ? [specificReciterId]
-        : [...new Set([...audioList, ...allReciterIds])]; // Check all reciters, not just those in the list
-      
-      const surahsPerReciter = {};
-      
-      for (const reciterId of recitersToCheck) {
-        const audioDir = `${FileSystem.documentDirectory}quran_audio/${reciterId}/`;
-        const downloadedSurahs = [];
-        
-        for (const surah of SURAHS) {
-          try {
-            const fileUri = `${audioDir}${surah.number}.mp3`;
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
-            if (fileInfo.exists && fileInfo.size > 0) {
-              downloadedSurahs.push(surah.number);
-            }
-          } catch (error) {
-            // Skip if error checking file
-          }
-        }
-        
-        // Only add to the list if there are downloaded surahs
-        if (downloadedSurahs.length > 0) {
-          surahsPerReciter[reciterId] = downloadedSurahs;
-        }
-      }
-      
-      // Merge with existing state to preserve other reciters' data
-      setDownloadedSurahsPerReciter(prev => ({
-        ...prev,
-        ...surahsPerReciter
-      }));
-    } catch (error) {
-      console.error('Error loading downloaded surahs per reciter:', error);
-    }
+  const audioDir = id => FileSystem.documentDirectory + 'quran_audio/' + id + '/';
+  const readAudioIndex = async id => {
+    const names = await FileSystem.readDirectoryAsync(audioDir(id)).catch(() => []);
+    return names.filter(name => /^([1-9]\d{0,2})\.mp3$/.test(name)).map(name => parseInt(name, 10))
+      .filter(number => number <= SURAHS.length).sort((a,b) => a-b);
+  };
+  const loadDownloadedSurahsPerReciter = async id => {
+    const ids = id ? [id] : RECITERS.map(r => r.id);
+    const entries = await Promise.all(ids.map(async key => [key, await readAudioIndex(key)]));
+    setDownloadedSurahsPerReciter(old => ({...old, ...Object.fromEntries(entries)}));
   };
 
   const loadSettings = async () => {
@@ -257,101 +233,7 @@ const ARABIC_FONTS = [
     }
   };
 
-  const fetchTranslationFromAPI = async (surahNumber, translationId) => {
-    const apiEndpoints = getTranslationEndpoints(translationId, surahNumber);
-
-    let lastError = null;
-    
-    for (let i = 0; i < apiEndpoints.length; i++) {
-      try {
-        const { url, format } = apiEndpoints[i];
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          lastError = new Error(`HTTP ${response.status}`);
-          continue;
-        }
-
-        const responseText = await response.text();
-        
-        if (!responseText || responseText.trim() === '' || responseText.trim() === 'undefined') {
-          lastError = new Error('Empty response from API');
-          continue;
-        }
-
-        let data = JSON.parse(responseText);
-        
-        // Handle GitHub API format - { chapter: [{ chapter, verse, text }, ...] }
-        if (format === 'github') {
-          let versesArray = null;
-          
-          // Format 1: { chapter: [...] } - most common GitHub API format
-          if (data.chapter && Array.isArray(data.chapter) && data.chapter.length > 0) {
-            versesArray = data.chapter;
-          }
-          // Format 2: Direct array
-          else if (Array.isArray(data) && data.length > 0) {
-            versesArray = data;
-          }
-          // Format 3: { verses: [...] }
-          else if (data.verses && Array.isArray(data.verses) && data.verses.length > 0) {
-            versesArray = data.verses;
-          }
-          
-          if (versesArray && versesArray.length > 0) {
-            return versesArray.map((verse, index) => {
-              const num = verse.verse || verse.verse_number || verse.number || (index + 1);
-              const text = verse.text || '';
-              return {
-                number: typeof num === 'string' ? parseInt(num, 10) : num,
-                text: text.trim(),
-              };
-            }).filter(v => v.text && v.text.length > 0);
-          }
-        }
-        // Handle Al-Quran Cloud format
-        else if (format === 'alquran' && data.code === 200 && data.data) {
-          if (data.data.ayahs && Array.isArray(data.data.ayahs) && data.data.ayahs.length > 0) {
-            return data.data.ayahs.map((ayah, index) => ({
-              number: ayah.numberInSurah || ayah.number || (index + 1),
-              text: (ayah.text || '').trim(),
-            })).filter(v => v.text && v.text.length > 0);
-          }
-        }
-        // Handle quran.com API format
-        else if (format === 'qurancom' && data.translations && Array.isArray(data.translations) && data.translations.length > 0) {
-          return data.translations.map((trans, index) => ({
-            number: trans.verse_number || trans.verseNumber || (index + 1),
-            text: (trans.text || trans.translated_text || '').trim(),
-          })).filter(v => v.text && v.text.length > 0);
-        }
-      } catch (apiError) {
-        if (apiError.name === 'AbortError') {
-          lastError = new Error('Request timed out');
-        } else {
-          lastError = apiError;
-        }
-        if (i === apiEndpoints.length - 1) {
-          break;
-        }
-      }
-    }
-
-    throw lastError || new Error('All API endpoints failed');
-  };
+  const fetchTranslationFromAPI = (number, edition) => chapter.fetchChapter(SURAHS[number - 1], edition);
 
   const downloadTranslation = async (translationId) => {
     if (downloadingTranslations[translationId]) {
@@ -465,37 +347,24 @@ const ARABIC_FONTS = [
     if (onSettingsChange) onSettingsChange({ reciter: value ? reciterId : null });
   };
 
-  const pauseAudioDownload = (reciterId) => {
-    setPausedAudio(prev => ({ ...prev, [reciterId]: true }));
+  const stopAudio = (id, pause) => {
+    const job = audioJobs.current[id];
+    if (job) {
+      job.stopped = true;
+      job.task?.cancelAsync().catch(() => {});
+      if (pause) pausedSelections.current[id] = job.numbers;
+      delete audioJobs.current[id];
+    }
+    if (!pause) delete pausedSelections.current[id];
+    setPausedAudio(prev => ({...prev,[id]:pause}));
+    if (!pause) setDownloadingAudio(prev => ({...prev,[id]:null}));
   };
-
-  const cancelAudioDownload = (reciterId) => {
-    Alert.alert(
-      tr("quranSettingsDrawer.cancelDownload"),
-      tr("quranSettingsDrawer.areYouSureYouWantToCancelThis"),
-      [
-        { text: tr("quranSettingsDrawer.no"), style: 'cancel' },
-        {
-          text: tr("quranSettingsDrawer.yesCancel"),
-          style: 'destructive',
-          onPress: () => {
-            // Clear download state
-            setDownloadingAudio(prev => {
-              const updated = { ...prev };
-              delete updated[reciterId];
-              return updated;
-            });
-            setPausedAudio(prev => {
-              const updated = { ...prev };
-              delete updated[reciterId];
-              return updated;
-            });
-            Alert.alert(tr("quranSettingsDrawer.downloadCancelled"), tr("quranSettingsDrawer.theDownloadHasBeenCancelled"));
-          },
-        },
-      ]
-    );
-  };
+  const pauseAudioDownload = id => stopAudio(id, true);
+  const cancelAudioDownload = id => Alert.alert(tr("quranSettingsDrawer.cancelDownload"),
+    tr("quranSettingsDrawer.areYouSureYouWantToCancelThis"), [
+      {text:tr("quranSettingsDrawer.no"), style:'cancel'},
+      {text:tr("quranSettingsDrawer.yesCancel"), style:'destructive', onPress:() => stopAudio(id,false)}
+    ]);
 
   const handleDeleteAudio = async (reciterId) => {
     const reciterName = getReciterName(reciterId);
@@ -704,7 +573,7 @@ const ARABIC_FONTS = [
     setPausedAudio(prev => ({ ...prev, [reciterId]: false }));
     // Resume download by calling downloadAudioRecitation again
     // It will check for existing files and continue from where it left off
-    await downloadAudioRecitation(reciterId, true);
+    await startAudioDownload(reciterId, true, pausedSelections.current[reciterId]);
   };
 
   const downloadAudioRecitation = async (reciterId, isResume = false, selectedSurahNumbers = null) => {
@@ -753,410 +622,81 @@ const ARABIC_FONTS = [
     );
   };
 
-  const startAudioDownload = async (reciterId, isResume = false, selectedSurahNumbers = null) => {
+  const startAudioDownload = async (id, isResume = false, selected = null) => {
+    if (audioJobs.current[id]) return;
+    const numbers = [...new Set(selected || SURAHS.map(s => s.number))];
+    const job = {numbers, stopped:false, task:null};
+    audioJobs.current[id] = job;
+    const active = () => !job.stopped && audioJobs.current[id] === job;
+    const dir = audioDir(id);
+    let completed = 0;
     try {
-      const audioDir = `${FileSystem.documentDirectory}quran_audio/${reciterId}/`;
-      // Ensure directory exists
-      const dirInfo = await FileSystem.getInfoAsync(audioDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
-        console.log(`Created audio directory: ${audioDir}`);
-      } else {
-        console.log(`Audio directory already exists: ${audioDir}`);
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-      const errors = [];
-
-      // Determine which surahs to download
-      let surahsToDownload = SURAHS;
-      if (selectedSurahNumbers && selectedSurahNumbers.length > 0) {
-        // Download only selected surahs
-        surahsToDownload = SURAHS.filter(s => selectedSurahNumbers.includes(s.number));
-      } else if (isResume) {
-        // Resume: find how many files already exist and continue from there
-        let startIndex = 0;
-        for (let j = 0; j < SURAHS.length; j++) {
-          const checkSurah = SURAHS[j];
-          const checkFileUri = `${audioDir}${checkSurah.number}.mp3`;
-          const checkFileInfo = await FileSystem.getInfoAsync(checkFileUri);
-          if (checkFileInfo.exists && checkFileInfo.size > 0) {
-            startIndex = j + 1;
-          } else {
-            break;
-          }
-        }
-        surahsToDownload = SURAHS.slice(startIndex);
-      }
-
-      const totalToDownload = surahsToDownload.length;
-      let currentIndex = 0;
-
-      for (const surah of surahsToDownload) {
-        // Check if paused
-        if (pausedAudio[reciterId]) {
-          console.log(`Download paused for ${reciterId} at surah ${surah.number}`);
-          break; // Exit loop but keep download state
-        }
-
-        currentIndex++;
-        setDownloadingAudio(prev => ({
-          ...prev,
-          [reciterId]: { current: currentIndex, total: totalToDownload }
-        }));
-
-        try {
-          let audioUrl;
-
-          if (reciterId === 'arabic_english_r2') {
-            // Arabic & English combined recitation – download from your R2 bucket
-            const surahNum = surah.number.toString().padStart(3, '0');
-            // Try custom domain first, fallback to dev URL if it fails
-            const R2_CUSTOM_URL = 'https://cdn.muslimsync.com/quran';
-            const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
-            audioUrl = `${R2_CUSTOM_URL}/${surahNum}.mp3`;
-          } else {
-          // Map reciter IDs to Islamic Network CDN format (same as AudioPlayer)
-          const reciterApiMap = {
-            'mishary_rashid_alafasy': 'ar.alafasy',
-            'abdul_basit_murattal': 'ar.abdulbasitmurattal',
-            'abdul_basit_mujawwad': 'ar.abdulbasitmujawwad',
-            'abdullah_basfar': 'ar.abdullahbasfar',
-            'abdurrahmaan_alsudais': 'ar.abdurrahmaansudais',
-            'saad_al_ghamdi': 'ar.saadghamdi',
-            'maher_al_muaiqly': 'ar.mahermuaiqly',
-            'muhammad_ayyoub': 'ar.muhammadayyoub',
-            'abdullah_matroud': 'ar.abdullahmatroud',
-            'ahmed_ibn_ali_al_ajamy': 'ar.ahmedibnaliajamy',
-          };
-          
-          const reciterCode = reciterApiMap[reciterId] || reciterApiMap['mishary_rashid_alafasy'];
-          // Use Islamic Network CDN (more reliable)
-            audioUrl = `https://cdn.islamic.network/quran/audio-surah/128/${reciterCode}/${surah.number}.mp3`;
-          }
-          const fileUri = `${audioDir}${surah.number}.mp3`;
-          
-          // Check if file already exists and has valid size
-          const fileInfo = await FileSystem.getInfoAsync(fileUri);
-          if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
-            console.log(`Surah ${surah.number} already downloaded (${fileInfo.size} bytes), skipping`);
-            successCount++;
-            continue;
-          }
-
-          // Download audio file with timeout and fallback for R2
-          console.log(`Downloading audio for surah ${surah.number} from: ${audioUrl}`);
-          
-          let downloadResult;
-          let downloadedFileInfo;
-          
-          try {
-            // For R2, try custom domain first with shorter timeout (15 seconds)
-            if (reciterId === 'arabic_english_r2' && audioUrl.includes('cdn.muslimsync.com')) {
-              const quickTimeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Download timeout')), 15000)
-              );
-              downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), quickTimeoutPromise]);
-              
-              // Verify the file was actually downloaded
-              downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
-              
-              if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
-                console.log(`✅ Successfully downloaded surah ${surah.number} from custom domain (${downloadedFileInfo.size} bytes)`);
-                successCount++;
-                // Continue to next surah
-                if (currentIndex < totalToDownload) {
-                  await new Promise(resolve => setTimeout(resolve, 300));
-                }
-                continue;
-              }
-              
-              // If custom domain failed, try dev URL fallback
-              console.log(`❌ Custom domain download failed for surah ${surah.number}, trying dev URL fallback`);
-              const surahNum = surah.number.toString().padStart(3, '0');
-              const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
-              audioUrl = `${R2_DEV_URL}/${surahNum}.mp3`;
-              console.log(`Trying fallback URL: ${audioUrl}`);
-              
-              // Delete any incomplete file from custom domain attempt
-              try {
-                const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
-                if (existingFileInfo.exists) {
-                  await FileSystem.deleteAsync(fileUri, { idempotent: true });
-                }
-              } catch (deleteError) {
-                // Ignore delete errors
-              }
-            }
-            
-            // Try download (either first attempt for non-R2, or fallback for R2)
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Download timeout')), 60000)
-            );
-            
-            downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), timeoutPromise]);
-            
-            // Verify the file was actually downloaded
-            downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
-            
-            if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
-              console.log(`Successfully downloaded surah ${surah.number} (${downloadedFileInfo.size} bytes)`);
-              successCount++;
-            } else {
-              console.error(`Download failed for surah ${surah.number}: status=${downloadResult.status}, exists=${downloadedFileInfo.exists}, size=${downloadedFileInfo.size}`);
-              // Try to delete the incomplete file
-              try {
-                if (downloadedFileInfo.exists) {
-                  await FileSystem.deleteAsync(fileUri, { idempotent: true });
-                }
-              } catch (deleteError) {
-                console.error('Error deleting incomplete file:', deleteError);
-              }
-              failCount++;
-            }
-          } catch (downloadError) {
-            // If custom domain failed and we haven't tried fallback yet, try it now
-            if (reciterId === 'arabic_english_r2' && audioUrl.includes('cdn.muslimsync.com') && !audioUrl.includes('r2.dev')) {
-              console.log(`Custom domain download failed for surah ${surah.number}: ${downloadError.message}, trying dev URL fallback`);
-              try {
-                const surahNum = surah.number.toString().padStart(3, '0');
-                const R2_DEV_URL = 'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran';
-                audioUrl = `${R2_DEV_URL}/${surahNum}.mp3`;
-                
-                // Delete any incomplete file
-                try {
-                  const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
-                  if (existingFileInfo.exists) {
-                    await FileSystem.deleteAsync(fileUri, { idempotent: true });
-                  }
-                } catch (deleteError) {
-                  // Ignore
-                }
-                
-                // Try with dev URL
-                const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Download timeout')), 60000)
-                );
-                downloadResult = await Promise.race([FileSystem.downloadAsync(audioUrl, fileUri), timeoutPromise]);
-                downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
-                
-                if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
-                  console.log(`✅ Successfully downloaded surah ${surah.number} from dev URL fallback (${downloadedFileInfo.size} bytes)`);
-                  successCount++;
-                  // Continue to next surah
-                  if (currentIndex < totalToDownload) {
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                  }
-                  continue;
-                } else {
-                  throw new Error('Fallback download also failed');
-                }
-              } catch (fallbackError) {
-                console.error(`❌ Both custom domain and dev URL failed for surah ${surah.number}:`, fallbackError.message);
-                failCount++;
-              }
-            } else {
-              // For non-R2 or already tried fallback, just count as failure
-              console.error(`Download failed for surah ${surah.number}:`, downloadError.message);
-              failCount++;
-            }
-          }
-                  
-          // Small delay to avoid overwhelming the server
-          if (currentIndex < totalToDownload) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        } catch (error) {
-          const errorMsg = `Surah ${surah.number}: ${error.message || error}`;
-          console.error(`Failed to download audio for surah ${surah.number}:`, errorMsg);
-          errors.push(errorMsg);
-          // Try to delete the incomplete file
-          try {
-            const fileUri = `${audioDir}${surah.number}.mp3`;
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
-            if (fileInfo.exists) {
-              await FileSystem.deleteAsync(fileUri, { idempotent: true });
-            }
-          } catch (deleteError) {
-            // Ignore delete errors
-          }
-          failCount++;
-        }
-      }
-
-              // Mark as downloaded if all succeeded (only for whole Quran)
-              if (!selectedSurahNumbers && successCount === SURAHS.length && failCount === 0) {
-                const updated = [...downloadedAudio];
-                if (!updated.includes(reciterId)) {
-                  updated.push(reciterId);
-                  setDownloadedAudio(updated);
-                  await AsyncStorage.setItem(STORAGE_KEYS.DOWNLOADED_AUDIO, JSON.stringify(updated));
-                }
-              }
-              
-              // Reload downloaded surahs list for this reciter
-              await loadDownloadedSurahsPerReciter(reciterId);
-
-      // Only clear download state if not paused
-      const isPaused = pausedAudio[reciterId];
-      if (!isPaused) {
-        setDownloadingAudio(prev => {
-          const updated = { ...prev };
-          delete updated[reciterId];
-          return updated;
-        });
-        setPausedAudio(prev => {
-          const updated = { ...prev };
-          delete updated[reciterId];
-          return updated;
-        });
-
-        // Only show alerts if download completed (not paused)
-        if (successCount === SURAHS.length && failCount === 0) {
-          Alert.alert(tr("dua.success"), tr("quranSettingsDrawer.audioRecitationDownloadedSuccessfullyForAllValueSurahs", { value1: successCount }));
-        } else if (successCount > 0) {
-          if (errors.length) console.warn('Audio download failures:', errors);
-          Alert.alert(
-            tr("quranSettingsDrawer.partialSuccess"),
-            tr("quranSettingsDrawer.downloadedValueOutOfValueSurahsValueFailed_5711b", { value1: successCount, value2: SURAHS.length, value3: failCount, value4: '' })
-          );
+      await FileSystem.makeDirectoryAsync(dir, {intermediates:true});
+      const existing = new Set(await readAudioIndex(id));
+      setPausedAudio(prev => ({...prev,[id]:false}));
+      for (const number of numbers) {
+        if (!active()) return;
+        const target = dir + number + '.mp3';
+        if (existing.has(number) && (await FileSystem.getInfoAsync(target)).size > 0) {
+          completed++;
         } else {
-          if (errors.length) console.warn('Audio download failures:', errors);
-          Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadAudioRecitationPleaseCheckYour", { value1: '' }));
+          const padded = String(number).padStart(3,'0') + '.mp3';
+          const urls = id === 'arabic_english_r2' ? [
+            'https://cdn.muslimsync.com/quran/'+padded,
+            'https://pub-2c4edd4aaabe4396b691206a23c98516.r2.dev/quran/'+padded
+          ] : ['https://cdn.islamic.network/quran/audio-surah/128/ar.alafasy/'+number+'.mp3',
+               'https://server8.mp3quran.net/afs/'+padded];
+          for (const url of urls) {
+            if (!active()) return;
+            const tmp = dir + number + '-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.part';
+            const task = FileSystem.createDownloadResumable(url,tmp);
+            job.task = task;
+            const timeout = setTimeout(() => task.cancelAsync().catch(() => {}), 180000);
+            try {
+              const res = await task.downloadAsync();
+              if (!active()) return;
+              if (res?.status !== 200 || !((await FileSystem.getInfoAsync(tmp)).size > 0)) continue;
+              if (!active()) return;
+              await FileSystem.moveAsync({from:tmp,to:target});
+              completed++;
+              break;
+            } catch { /* Try the next URL for this same reciter. */ }
+            finally {
+              clearTimeout(timeout);
+              job.task = null;
+              await FileSystem.deleteAsync(tmp,{idempotent:true}).catch(() => {});
+            }
+          }
         }
+        if (active()) setDownloadingAudio(prev => ({...prev,[id]: {current:completed,total:numbers.length}}));
       }
-    } catch (error) {
-      console.error('Download error:', error);
-      Alert.alert(tr("status.error", { ns: 'common' }), tr("quranSettingsDrawer.failedToDownloadAudioRecitationValuePleaseCheck", { value1: tr('errors.requestFailed') }));
-      setDownloadingAudio(prev => {
-        const updated = { ...prev };
-        delete updated[reciterId];
-        return updated;
-      });
-      setPausedAudio(prev => {
-        const updated = { ...prev };
-        delete updated[reciterId];
-        return updated;
-      });
+      if (!active()) return;
+      const files = await readAudioIndex(id);
+      if (!active()) return;
+      setDownloadedSurahsPerReciter(old => ({...old,[id]:files}));
+      if (files.length === SURAHS.length) {
+        indexWrite.current = indexWrite.current.catch(() => {}).then(async () => {
+          const ids = JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_AUDIO) || '[]');
+          const updated = [...new Set([...ids,id])];
+          await AsyncStorage.setItem(STORAGE_KEYS.DOWNLOADED_AUDIO,JSON.stringify(updated));
+          setDownloadedAudio(updated);
+        });
+        await indexWrite.current;
+      }
+      if (active()) Alert.alert(tr(completed === numbers.length ? 'dua.success' : 'quranSettingsDrawer.partialSuccess'),
+        tr('quranSettingsDrawer.downloadedValueOutOfValueSurahsValueFailed',{value1:completed,value2:numbers.length,value3:numbers.length-completed}));
+    } catch {
+      if (active()) Alert.alert(tr('status.error',{ns:'common'}),tr('errors.requestFailed'));
+    } finally {
+      if (active()) {
+        delete audioJobs.current[id];
+        delete pausedSelections.current[id];
+        setDownloadingAudio(prev => ({...prev,[id]:null}));
+      }
     }
   };
 
-  const fetchSurahFromAPI = async (surahNumber) => {
-    // Try quran.com API first, then fallback to other APIs
-    const apiEndpoints = [
-      {
-        url: `https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number=${surahNumber}`,
-        format: 'qurancom',
-      },
-      {
-        url: `https://api.alquran.cloud/v1/surah/${surahNumber}`,
-        format: 'alquran',
-      },
-      {
-        url: `https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`,
-        format: 'alquran',
-      },
-      {
-        url: `https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/ara-quranuthmani/${surahNumber}.json`,
-        format: 'jsdelivr',
-      },
-    ];
-
-    let lastError = null;
-    
-    for (let i = 0; i < apiEndpoints.length; i++) {
-      try {
-        const { url, format } = apiEndpoints[i];
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          lastError = new Error(`HTTP ${response.status}`);
-          continue;
-        }
-
-        const responseText = await response.text();
-        
-        if (!responseText || responseText.trim() === '' || responseText.trim() === 'undefined') {
-          lastError = new Error('Empty response from API');
-          continue;
-        }
-
-        let data = JSON.parse(responseText);
-        
-        // Handle quran.com API format
-        if (format === 'qurancom' && data.verses && Array.isArray(data.verses) && data.verses.length > 0) {
-          return data.verses.map((verse, index) => ({
-            number: verse.verse_number || (index + 1),
-            text: verse.text_uthmani || verse.text || '',
-            translation: null,
-            audio: null,
-          }));
-        }
-        // Handle Al-Quran Cloud format
-        else if (format === 'alquran' && data.code === 200 && data.data) {
-          if (data.data.ayahs && Array.isArray(data.data.ayahs) && data.data.ayahs.length > 0) {
-            return data.data.ayahs.map((ayah, index) => ({
-              number: ayah.numberInSurah || ayah.number || (index + 1),
-              text: ayah.text || '',
-              translation: null,
-              audio: ayah.audio || null,
-            }));
-          } else if (Array.isArray(data.data) && data.data.length > 0) {
-            const surahData = data.data[0];
-            if (surahData.ayahs && Array.isArray(surahData.ayahs) && surahData.ayahs.length > 0) {
-              return surahData.ayahs.map((ayah, idx) => ({
-                number: ayah.numberInSurah || ayah.number || (idx + 1),
-                text: ayah.text || '',
-                translation: null,
-                audio: ayah.audio || null,
-              }));
-            }
-          } else if (data.data.edition && data.data.edition.ayahs && Array.isArray(data.data.edition.ayahs)) {
-            return data.data.edition.ayahs.map((ayah, idx) => ({
-              number: ayah.numberInSurah || ayah.number || (idx + 1),
-              text: ayah.text || '',
-              translation: null,
-              audio: ayah.audio || null,
-            }));
-          }
-        }
-        // Handle jsdelivr format
-        else if (format === 'jsdelivr' && Array.isArray(data) && data.length > 0) {
-          return data.map((v, idx) => ({
-            number: v.number || idx + 1,
-            text: v.text || '',
-            translation: null,
-            audio: null,
-          }));
-        }
-      } catch (apiError) {
-        if (apiError.name === 'AbortError') {
-          lastError = new Error('Request timed out');
-        } else {
-          lastError = apiError;
-        }
-        if (i === apiEndpoints.length - 1) {
-          break;
-        }
-      }
-    }
-
-    throw lastError || new Error('All API endpoints failed');
-  };
+  const fetchSurahFromAPI = number => chapter.fetchChapter(SURAHS[number - 1]);
 
   const downloadEntireQuran = async (initialCount = 0) => {
     // Download surahs sequentially (like translations) - all together, not in batches

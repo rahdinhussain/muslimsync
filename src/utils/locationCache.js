@@ -14,6 +14,7 @@ export const getCachedLocation = async (forceRefresh = false) => {
     // Request permission first
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
+      await clearLocationCache();
       throw new Error('Location permission is required.');
     }
 
@@ -29,6 +30,7 @@ export const getCachedLocation = async (forceRefresh = false) => {
           if (age < LOCATION_CACHE_MAX_AGE) {
             return cachedLocation;
           }
+          await clearLocationCache();
         }
       } catch (cacheError) {
         // Cache error - continue to fetch new location
@@ -90,6 +92,7 @@ export const getCachedLocationOnly = async () => {
       if (age < LOCATION_CACHE_MAX_AGE) {
         return cachedLocation;
       }
+      await clearLocationCache();
     }
     return null;
   } catch (error) {

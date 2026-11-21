@@ -21,7 +21,7 @@ export default function MosqueScheduleScreen({ route }) {
   const [prayerTimes, setPrayerTimes] = useState(null);
   const [loadingPrayerTimes, setLoadingPrayerTimes] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [availableDates, setAvailableDates] = useState([]);
+
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {
@@ -213,75 +213,24 @@ export default function MosqueScheduleScreen({ route }) {
   };
 
   useEffect(() => {
-    if (mosque?.id) {
-      fetchAvailableDates();
-    }
-  }, [mosque?.id]);
-
+    if (!mosque?.id) return;
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    setSelectedDate(now);
+  },[mosque?.id]);
   useEffect(() => {
-    // Always fetch prayer times for the selected date (it may not exist in availableDates)
-    if (mosque?.id && selectedDate) {
-      fetchPrayerTimes();
-    }
-  }, [selectedDate, mosque?.id]);
-
-  const fetchAvailableDates = async () => {
     if (!mosque?.id) return;
-
-    try {
-      // Always set selected date to today first
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      setSelectedDate(today);
-
-      const { data, error } = await supabase
-        .from('mosque_prayer_times')
-        .select('date')
-        .eq('mosque_id', mosque.id)
-        .order('date', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        const dates = data.map(row => new Date(row.date));
-        setAvailableDates(dates);
-      } else {
-        setAvailableDates([]);
-      }
-    } catch (error) {
-      setAvailableDates([]);
-    }
-  };
-
-  const fetchPrayerTimes = async () => {
-    if (!mosque?.id) return;
-
-    try {
-      setLoadingPrayerTimes(true);
-      const dateString = format(selectedDate, 'yyyy-MM-dd');
-
-      const { data, error } = await supabase
-        .from('mosque_prayer_times')
-        .select('times')
-        .eq('mosque_id', mosque.id)
-        .eq('date', dateString)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No prayer times found for selected date
-          setPrayerTimes(null);
-        } else {
-          setPrayerTimes(null);
-        }
-      } else {
-        // data.times is the JSONB column containing all prayer times
-        setPrayerTimes(data.times || null);
-      }
-    } catch (error) {
-      setPrayerTimes(null);
-    } finally {
-      setLoadingPrayerTimes(false);
-    }
-  };
+    let live = true;
+    const ctrl = new AbortController();
+    setLoadingPrayerTimes(true);
+    setPrayerTimes(null);
+    const date = format(selectedDate,'yyyy-MM-dd');
+    supabase.from('mosque_prayer_times').select('times').eq('mosque_id',mosque.id).eq('date',date)
+      .abortSignal(ctrl.signal).maybeSingle().then(({data}) => {
+        if (live) {setPrayerTimes(data?.times || null);setLoadingPrayerTimes(false);}
+      }, () => {if (live) setLoadingPrayerTimes(false);});
+    return () => {live=false;ctrl.abort();};
+  },[selectedDate,mosque?.id]);
 
   const hasPreviousDate = () => {
     // Always allow going to previous day (no restrictions)
@@ -306,12 +255,7 @@ export default function MosqueScheduleScreen({ route }) {
   };
 
   // Check if today is available
-  const isTodayAvailable = () => {
-    if (availableDates.length === 0) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return availableDates.some(date => isSameDay(date, today));
-  };
+
 
   const handleCall = async () => {
     if (!mosque.phone) return;
@@ -520,64 +464,25 @@ export default function MosqueScheduleScreen({ route }) {
             {(() => {
               const prayerCards = [];
 
-              // Handle standard prayers (fajr, dhuhr, asr, maghrib, isha) - objects with athan/iqama (lowercase)
-              ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'].forEach((key) => {
-                if (prayerTimes[key] && typeof prayerTimes[key] === 'object' && !Array.isArray(prayerTimes[key])) {
-                  const value = prayerTimes[key];
-                  // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
-                  // Preserve exact format from database (24-hour like "14:30" or 12-hour like "2:30 PM")
-                  const athan = (value.athan || value.AThan) ? String(value.athan || value.AThan).trim() : '';
-                  const iqama = (value.iqama || value.Iqama) ? String(value.iqama || value.Iqama).trim() : '';
-                  if (athan || iqama) {
-                    const prayerInfo = getPrayerDisplayInfo(key);
-                    prayerCards.push({ 
-                      key, 
-                      athan, 
-                      iqama, 
-                      hasBoth: !!(athan && iqama),
-                      ...prayerInfo 
-                    });
-                  }
-                }
+              const parts = value => {
+                const raw = typeof value === 'object' && !Array.isArray(value) && value ? value : {athan:value};
+                const athans = [raw.athan || raw.AThan, raw.athan2].flat().filter(v => typeof v === 'string' && v.trim());
+                const athan = athans.map(v => formatPrayerTime(v)).join(' / ');
+                const iqama = raw.iqama || raw.Iqama || '';
+                return {athan, iqama, hasBoth:Boolean(athan && iqama)};
+              };
+              for (const key of ['fajr','sunrise','dhuhr','asr','maghrib','isha']) {
+                const pair = parts(prayerTimes[key]);
+                if (pair.athan || pair.iqama) prayerCards.push({key,...pair,...getPrayerDisplayInfo(key)});
+              }
+              const friday = prayerTimes.jummah || prayerTimes.jumuah;
+              const entries = Array.isArray(friday) ? friday : friday ? [friday] : [];
+              entries.forEach((value,i) => {
+                const pair = parts(value);
+                if (pair.athan || pair.iqama) prayerCards.push({key:'jumuah_'+i,...pair,
+                  name:entries.length>1 ? tr('mosqueSchedule.fridayPrayerNumber',{number:formatNumber(i+1)}) : tr('prayers.jumuah',{ns:'common'}),
+                  icon:'people',color:'#4B0082',order:10+i});
               });
-
-              // Handle sunrise - single string value (after Fajr)
-              // Preserve exact format from database (24-hour like "06:30" or 12-hour like "6:30 AM")
-              if (prayerTimes.sunrise && (typeof prayerTimes.sunrise === 'string' || typeof prayerTimes.sunrise === 'number')) {
-                const sunriseValue = String(prayerTimes.sunrise).trim();
-                if (sunriseValue !== '') {
-                  const prayerInfo = getPrayerDisplayInfo('sunrise');
-                  prayerCards.push({ key: 'sunrise', displayTime: sunriseValue, ...prayerInfo });
-                }
-              }
-
-              // Handle jummah (note: key is "jummah" not "jumuah") - array of objects, create a card for each
-              const jummahKey = prayerTimes.jummah ? 'jummah' : (prayerTimes.jumuah ? 'jumuah' : null);
-              if (jummahKey && Array.isArray(prayerTimes[jummahKey])) {
-                const jummahArray = prayerTimes[jummahKey];
-                jummahArray.forEach((jummahItem, index) => {
-                  if (jummahItem && typeof jummahItem === 'object') {
-                    // Check for lowercase keys (athan/iqama) or uppercase (AThan/Iqama) for compatibility
-                    // Preserve exact format from database (24-hour like "14:30" or 12-hour like "2:30 PM")
-                    const athan = (jummahItem.athan || jummahItem.AThan) ? String(jummahItem.athan || jummahItem.AThan).trim() : '';
-                    const iqama = (jummahItem.iqama || jummahItem.Iqama) ? String(jummahItem.iqama || jummahItem.Iqama).trim() : '';
-                    if (athan || iqama) {
-                      // Only show number if there's more than one Jumu'ah
-                      const name = jummahArray.length > 1 ? tr('mosqueSchedule.fridayPrayerNumber', { number: formatNumber(index + 1) }) : tr('prayers.jumuah', { ns: 'common' });
-                      prayerCards.push({
-                        key: `jumuah_${index}`,
-                        athan,
-                        iqama,
-                        hasBoth: !!(athan && iqama),
-                        name,
-                        icon: 'people',
-                        color: '#4B0082',
-                        order: 10 + index,
-                      });
-                    }
-                  }
-                });
-              }
 
               // Sort by order and render
               return prayerCards
@@ -593,7 +498,7 @@ export default function MosqueScheduleScreen({ route }) {
                         <View style={styles.prayerTimeContainer}>
                           <View style={styles.timeRow}>
                             <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>{tr("mosqueSchedule.athan")}</Text>
-                            <Text style={dynamicStyles.prayerTime}>{formatPrayerTime(athan)}</Text>
+                            <Text style={dynamicStyles.prayerTime}>{athan}</Text>
                           </View>
                           <View style={styles.timeRow}>
                             <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>{tr("mosqueSchedule.iqama")}</Text>
@@ -602,7 +507,7 @@ export default function MosqueScheduleScreen({ route }) {
                         </View>
                       ) : (
               <Text style={dynamicStyles.prayerTime}>
-                          {formatPrayerTime(displayTime || athan || iqama)}
+                          {athan || formatPrayerTime(displayTime || iqama)}
                         </Text>
                       )}
                     </View>

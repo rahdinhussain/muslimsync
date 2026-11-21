@@ -6,7 +6,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readMethod, writeMethod } from '../utils/prayerPreferences';
 import { tr, formatNumber } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -14,28 +14,28 @@ import { useAppLocale } from '../context/LocaleContext';
 // Prayer time calculation methods
 
 
-const STORAGE_KEY = '@prayer_calculation_method';
+
 
 export default function PrayerTimeCalculationScreen() {
   const { locale, isRTL } = useAppLocale();
 
 const PRAYER_METHODS = [
-  { id: 0, name: tr("prayerTimeCalculation.shiaIthnaAnsari"), fajr: '15.0°', isha: '15.0°' },
+  { id: 0, name: tr("prayerTimeCalculation.shiaIthnaAnsari"), fajr: '16.0°', isha: '14.0°' },
   { id: 1, name: tr("prayerTimeCalculation.universityOfIslamicSciencesKarachi"), fajr: '18.0°', isha: '18.0°' },
   { id: 2, name: tr("prayerTimeCalculation.islamicSocietyOfNorthAmericaIsna"), fajr: '15.0°', isha: '15.0°' },
   { id: 3, name: tr("prayerTimeCalculation.muslimWorldLeagueMwl"), fajr: '18.0°', isha: '17.0°' },
   { id: 4, name: tr("prayerTimeCalculation.ummAlQuraUniversityMakkah"), fajr: '18.5°', isha: 90 },
   { id: 5, name: tr("prayerTimeCalculation.egyptianGeneralAuthorityOfSurvey"), fajr: '19.5°', isha: '17.5°' },
-  { id: 6, name: tr("prayerTimeCalculation.instituteOfGeophysicsUniversityOfTehran"), fajr: '17.7°', isha: '14.0°' },
-  { id: 7, name: tr("prayerTimeCalculation.gulfRegion"), fajr: '19.5°', isha: '19.5°' },
-  { id: 8, name: tr("prayerTimeCalculation.kuwait"), fajr: '18.0°', isha: '17.5°' },
-  { id: 9, name: tr("prayerTimeCalculation.qatar"), fajr: '18.0°', isha: '18.0°' },
-  { id: 10, name: tr("prayerTimeCalculation.majlisUgamaIslamSingapuraMuis"), fajr: '20.0°', isha: '18.0°' },
-  { id: 11, name: tr("prayerTimeCalculation.unionDesOrganisationsIslamiquesDeFranceUoif"), fajr: '12.0°', isha: '12.0°' },
-  { id: 12, name: tr("prayerTimeCalculation.diyanetLeriBaKanlTurkey"), fajr: '18.0°', isha: '17.0°' },
-  { id: 13, name: tr("prayerTimeCalculation.spiritualAdministrationOfMuslimsOfRussia"), fajr: '16.0°', isha: '15.0°' },
-  { id: 14, name: tr("prayerTimeCalculation.moonsightingCommitteeWorldwideMccw"), fajr: '18.0°', isha: '18.0°' },
-  { id: 15, name: tr("prayerTimeCalculation.dubaiCustom"), fajr: '18.2°', isha: '18.2°' },
+  { id: 7, name: tr("prayerTimeCalculation.instituteOfGeophysicsUniversityOfTehran"), fajr: '17.7°', isha: '14.0°' },
+  { id: 8, name: tr("prayerTimeCalculation.gulfRegion"), fajr: '19.5°', isha: 90 },
+  { id: 9, name: tr("prayerTimeCalculation.kuwait"), fajr: '18.0°', isha: '17.5°' },
+  { id: 10, name: tr("prayerTimeCalculation.qatar"), fajr: '18.0°', isha: 90 },
+  { id: 11, name: tr("prayerTimeCalculation.majlisUgamaIslamSingapuraMuis"), fajr: '20.0°', isha: '18.0°' },
+  { id: 12, name: tr("prayerTimeCalculation.unionDesOrganisationsIslamiquesDeFranceUoif"), fajr: '12.0°', isha: '12.0°' },
+  { id: 13, name: tr("prayerTimeCalculation.diyanetLeriBaKanlTurkey"), fajr: '18.0°', isha: '17.0°' },
+  { id: 14, name: tr("prayerTimeCalculation.spiritualAdministrationOfMuslimsOfRussia"), fajr: '16.0°', isha: '15.0°' },
+  { id: 15, name: tr("prayerTimeCalculation.moonsightingCommitteeWorldwideMccw") },
+  { id: 16, name: tr("prayerTimeCalculation.dubaiCustom"), fajr: '18.2°', isha: '18.2°' },
 ];
 
   const { colors, isDark } = useTheme();
@@ -48,7 +48,7 @@ const PRAYER_METHODS = [
 
   const loadPrayerMethod = async () => {
     try {
-      const saved = await AsyncStorage.getItem(STORAGE_KEY);
+      const saved = await readMethod();
       if (saved !== null) {
         setSelectedMethod(parseInt(saved, 10));
       }
@@ -60,7 +60,7 @@ const PRAYER_METHODS = [
   const handlePrayerMethodChange = async (methodId) => {
     try {
       setSelectedMethod(methodId);
-      await AsyncStorage.setItem(STORAGE_KEY, methodId.toString());
+      await writeMethod(methodId);
       Alert.alert(tr("dua.success"), tr("prayerTimeCalculation.prayerTimeCalculationMethodUpdatedPleaseRefreshPrayer"));
     } catch (error) {
       Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimeCalculation.failedToSavePrayerMethodPreference"));
@@ -153,7 +153,7 @@ const PRAYER_METHODS = [
             >
               <View style={dynamicStyles.optionContent}>
                 <Text style={dynamicStyles.optionTitle}>{method.name}</Text>
-                <Text style={dynamicStyles.optionDetails}>{tr("prayerTimeCalculation.fajrValueIshaValue", { value1: `${formatNumber(parseFloat(method.fajr), { minimumFractionDigits: 1 })}°`, value2: typeof method.isha === 'number' ? formatNumber(method.isha, { style: 'unit', unit: 'minute', unitDisplay: 'short' }) : `${formatNumber(parseFloat(method.isha), { minimumFractionDigits: 1 })}°` })}</Text>
+                {method.fajr && <Text style={dynamicStyles.optionDetails}>{tr("prayerTimeCalculation.fajrValueIshaValue", { value1: `${formatNumber(parseFloat(method.fajr), { minimumFractionDigits: 1 })}°`, value2: typeof method.isha === 'number' ? formatNumber(method.isha, { style: 'unit', unit: 'minute', unitDisplay: 'short' }) : `${formatNumber(parseFloat(method.isha), { minimumFractionDigits: 1 })}°` })}</Text>}
               </View>
               <Ionicons
                 name={selectedMethod === method.id ? 'radio-button-on' : 'radio-button-off'}

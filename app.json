@@ -20,8 +20,8 @@
       "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "Muslim Sync uses your location to calculate accurate prayer times, find nearby mosques, and determine the Qibla direction.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Muslim Sync uses your location to calculate accurate prayer times, find nearby mosques, and determine the Qibla direction.",
+        "NSLocationWhenInUseUsageDescription": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan.",
         "CFBundleLocalizations": [
           "en",
           "bn",
@@ -51,7 +51,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Muslim Sync to use your location to find nearby mosques and calculate accurate prayer times."
+          "locationAlwaysAndWhenInUsePermission": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan."
         }
       ],
       "expo-av",

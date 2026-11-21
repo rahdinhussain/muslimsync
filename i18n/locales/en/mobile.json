@@ -204,7 +204,13 @@
     "completeQuran": "Complete Quran",
     "readAndListenToTheHolyQuran": "Read and listen to the Holy Quran",
     "trackYourDailyRemembranceOfAllah": "Track your daily remembrance of Allah",
-    "discoverMosquesNearYouWithPrayerSchedules": "Discover mosques near you with prayer schedules"
+    "discoverMosquesNearYouWithPrayerSchedules": "Discover mosques near you with prayer schedules",
+    "chooseArea": "Choose a city or enable location for prayer times.",
+    "savedSchedule": "Showing a saved timetable for this date and area.",
+    "noVerifiedTimes": "No verified timetable for this date and area.",
+    "useCity": "Use this city",
+    "country": "Country",
+    "areaDisclosure": "For prayer times, AlAdhan receives your city and country or, if you choose device location, coordinates rounded to two decimal places."
   },
   "qibla": {
     "qiblaDirection": "Qibla Direction",
@@ -260,7 +266,8 @@
     "recitationBilingual": "Arabic and English recitation — {{name}}",
     "thisSurah": "this surah",
     "englishMeaning": "English translation",
-    "translationEditionNote": "Quran translations are selected separately from the app language."
+    "translationEditionNote": "Quran translations are selected separately from the app language.",
+    "translationUnavailableRetry": "Translation unavailable. Tap to retry."
   },
   "theme": {
     "automatic": "Automatic",

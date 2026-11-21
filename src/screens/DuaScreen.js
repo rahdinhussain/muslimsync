@@ -3,6 +3,7 @@ import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Dimensions } from 'react-native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { Audio } from 'expo-av';
@@ -25,6 +26,18 @@ import { tr, getLanguage } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
 
+const bundledCategoryIds = {
+  "morning": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "evening": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+  "food": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+  "travel": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14",
+  "sleep": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
+  "rizq": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a16",
+  "forgiveness": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a17",
+  "health": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18",
+  "protection": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19",
+  "guidance": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20"
+};
 const AUDIO_DIR = `${FileSystem.documentDirectory}dua_audio/`;
 const { width } = Dimensions.get('window');
 const CARD_MARGIN = 10;
@@ -34,6 +47,7 @@ const CARD_WIDTH = (width - 40 - CARD_MARGIN) / 2; // 40 for container padding, 
 
 export default function DuaScreen() {
   const { locale, isRTL } = useAppLocale();
+  const activeCategory = useRef(null);
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
@@ -328,6 +342,8 @@ const DUA_CATEGORIES = [
   const [mergedCategories, setMergedCategories] = useState([]);
 
   useEffect(() => {
+    activeCategory.current = null;
+    setDbCategories([]); setDuaCounts({});
     setSelectedCategory(null);
     setSelectedDua(null);
     setDbDuas({});
@@ -428,20 +444,17 @@ const DUA_CATEGORIES = [
   };
 
   const fetchCategories = async () => {
+    const key = '@dua_catalog_v2_' + locale;
+    setLoadingCategories(true);
     try {
-      setLoadingCategories(true);
-      const [categories, counts] = await Promise.all([
-        fetchDuaCategories(locale),
-        fetchDuaCountsByCategory(),
-      ]);
-      if (localeRef.current !== locale) return;
-      setDbCategories(categories);
-      setDuaCounts(counts);
-    } catch (error) {
-      // Error fetching categories
-    } finally {
-      setLoadingCategories(false);
-    }
+      const saved = JSON.parse(await AsyncStorage.getItem(key) || 'null');
+      if (saved && localeRef.current === locale) {setDbCategories(saved.categories);setDuaCounts(saved.counts);}
+      const [categories,counts] = await Promise.all([fetchDuaCategories(locale), fetchDuaCountsByCategory()]);
+      if (localeRef.current !== locale || !categories.length) return;
+      setDbCategories(categories);setDuaCounts(counts);
+      await AsyncStorage.setItem(key,JSON.stringify({categories,counts}));
+    } catch { /* The bundled and saved catalogs remain available. */ }
+    finally { if (localeRef.current === locale) setLoadingCategories(false); }
   };
 
   const mergeCategories = () => {
@@ -459,7 +472,7 @@ const DUA_CATEGORIES = [
           id: hardcodedCat.id, // Keep hardcoded ID for UI consistency
           title: dbCat.isLocalized ? dbCat.name : hardcodedCat.title,
           icon: dbCat.icon || hardcodedCat.icon,
-          duas: [], // Will be fetched from DB when clicked
+          duas: hardcodedCat.duas,
           dbId: dbCat.id, // Store DB UUID for queries
           slug: dbCat.slug,
           duaCount: count, // Store count for display
@@ -469,9 +482,9 @@ const DUA_CATEGORIES = [
       // No DB match found, use hardcoded but mark for DB fetch (if it exists in DB later)
       return {
         ...hardcodedCat,
-        duas: [], // Clear hardcoded duas, will fetch from DB
-        dbId: null,
-        duaCount: 0,
+        duas: hardcodedCat.duas,
+        dbId: bundledCategoryIds[hardcodedCat.id],
+        duaCount: hardcodedCat.duas.length,
       };
     });
     
@@ -497,204 +510,31 @@ const DUA_CATEGORIES = [
   };
 
   const handleCategorySelect = async (category) => {
+    activeCategory.current = category.dbId || category.id;
     setSelectedCategory(category);
-    
-    // Always try to fetch duas from database
-    // First try to find the DB category ID
-    let categoryId = category.dbId;
-    
-    // If no dbId, try to find it by matching slug with DB categories
-    if (!categoryId) {
-      const dbCat = dbCategories.find(db => db.slug === category.id);
-      if (dbCat) {
-        categoryId = dbCat.id;
-        // Update category with dbId for future reference
-        category.dbId = categoryId;
-      }
-    }
-    
-    // Fetch duas from database if we have a category ID
-    if (categoryId) {
-      await fetchCategoryDuas(categoryId, category);
-    } else {
-      // No DB category found, show empty state
-      setSelectedCategory({
-        ...category,
-        duas: [],
-      });
-      setLoadingDuas(false);
-    }
+    if (category.dbId) await fetchCategoryDuas(category.dbId, category);
   };
 
   const fetchCategoryDuas = async (categoryId, category) => {
+    const current = () => activeCategory.current === categoryId && localeRef.current === locale;
+    setLoadingDuas(true);
     try {
-      setLoadingDuas(true);
-      
-      // First, try to load downloaded duas from local storage
-      let downloadedDuas = [];
-      try {
-        const downloadedAudioList = await getDownloadedDuaTextIds(locale);
-        for (const duaId of downloadedAudioList) {
-          const downloadedText = await getDownloadedDuaText(duaId, locale);
-          if (downloadedText) {
-            // Filter by category_id if available, or include if category_id matches
-            const downloadedCategoryId = downloadedText.category_id;
-            if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
-              downloadedDuas.push({
-                ...downloadedText,
-                id: downloadedText.id,
-                title: downloadedText.title,
-                arabic: downloadedText.arabic,
-                transliteration: downloadedText.transliteration || '',
-                translation: downloadedText.translation || '',
-                reference: downloadedText.reference || '',
-                audioUrl: null, // Will be set from API if available
-                audioUrlFallback: null,
-                category_id: downloadedCategoryId || categoryId,
-                isDownloaded: true,
-              });
-            }
-          }
-        }
-      } catch (localError) {
-        // Error loading from local storage - continue to API
-        console.log('Error loading downloaded duas:', localError);
-      }
-      
-      // Try to fetch from API/database
-      let apiDuas = [];
-      try {
-        apiDuas = await fetchDuasByCategory(categoryId, locale);
-      } catch (apiError) {
-        // API fetch failed - use downloaded duas if available
-        console.log('Error fetching duas from API:', apiError);
-        if (downloadedDuas.length > 0) {
-          // We have downloaded duas, use those
-          const updatedCategory = {
-            ...category,
-            duas: downloadedDuas,
-          };
-          setSelectedCategory(updatedCategory);
-          setDbDuas(prev => ({
-            ...prev,
-            [categoryId]: downloadedDuas,
-          }));
-          setLoadingDuas(false);
-          return; // Use downloaded duas, no need to show error
-        } else {
-          // No downloaded duas and API failed - show error
-          throw apiError;
-        }
-      }
-      
-      // Merge API duas with downloaded duas
-      // Prefer downloaded text if available, but use API for audio URLs and other metadata
-      if (localeRef.current !== locale) return;
-      const mergedDuas = apiDuas.map(apiDua => {
-        const downloadedDua = downloadedDuas.find(d => d.id === apiDua.id || String(d.id) === String(apiDua.id));
-        if (downloadedDua) {
-          // Use downloaded text but keep API audio URLs
-          return {
-            ...apiDua,
-            contentLanguage: downloadedDua.contentLanguage,
-            requestedLocale: downloadedDua.requestedLocale,
-            translationSource: downloadedDua.translationSource,
-            title: downloadedDua.title || apiDua.title,
-            arabic: downloadedDua.arabic || apiDua.arabic,
-            transliteration: downloadedDua.transliteration || apiDua.transliteration,
-            translation: downloadedDua.translation || apiDua.translation,
-            reference: downloadedDua.reference || apiDua.reference,
-            isDownloaded: true,
-          };
-        }
-        return apiDua;
-      });
-      
-      // Add any downloaded duas that aren't in the API response (in case they were removed from DB)
-      apiDuas.forEach(apiDua => {
-        const exists = mergedDuas.find(d => d.id === apiDua.id || String(d.id) === String(apiDua.id));
-        if (!exists) {
-          // This shouldn't happen, but just in case
-        }
-      });
-      
-      // Add downloaded duas that might not be in API (offline-only duas)
-      downloadedDuas.forEach(downloadedDua => {
-        const exists = mergedDuas.find(d => d.id === downloadedDua.id || String(d.id) === String(downloadedDua.id));
-        if (!exists) {
-          mergedDuas.push(downloadedDua);
-        }
-      });
-      
-      // Update category with merged duas
-      const updatedCategory = {
-        ...category,
-        duas: mergedDuas,
-      };
-      setSelectedCategory(updatedCategory);
-      
-      // Store in cache
-      setDbDuas(prev => ({
-        ...prev,
-        [categoryId]: mergedDuas,
-      }));
-    } catch (error) {
-      if (localeRef.current !== locale) return;
-      // Error fetching duas - try to use downloaded ones as fallback
-      try {
-        const downloadedAudioList = await getDownloadedDuaTextIds(locale);
-        const fallbackDuas = [];
-        for (const duaId of downloadedAudioList) {
-          const downloadedText = await getDownloadedDuaText(duaId, locale);
-          if (downloadedText) {
-            // Filter by category_id if available
-            const downloadedCategoryId = downloadedText.category_id;
-            if (!downloadedCategoryId || downloadedCategoryId === categoryId) {
-              fallbackDuas.push({
-                ...downloadedText,
-                id: downloadedText.id,
-                title: downloadedText.title,
-                arabic: downloadedText.arabic,
-                transliteration: downloadedText.transliteration || '',
-                translation: downloadedText.translation || '',
-                reference: downloadedText.reference || '',
-                audioUrl: null,
-                audioUrlFallback: null,
-                category_id: downloadedCategoryId || categoryId,
-                isDownloaded: true,
-              });
-            }
-          }
-        }
-        
-        if (fallbackDuas.length > 0) {
-          // Use downloaded duas as fallback
-          const updatedCategory = {
-            ...category,
-            duas: fallbackDuas,
-          };
-          setSelectedCategory(updatedCategory);
-          setDbDuas(prev => ({
-            ...prev,
-            [categoryId]: fallbackDuas,
-          }));
-          setLoadingDuas(false);
-          return; // Successfully loaded from local storage
-        }
-      } catch (fallbackError) {
-        // Even fallback failed
-        console.log('Fallback to local storage also failed:', fallbackError);
-      }
-      
-      // No downloaded duas available - show error
-      Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToLoadDuasPleaseCheckYourInternet"));
-      setSelectedCategory({
-        ...category,
-        duas: [],
-      });
-    } finally {
-      setLoadingDuas(false);
-    }
+      const ids = await getDownloadedDuaTextIds(locale);
+      const saved = (await Promise.all(ids.map(id => getDownloadedDuaText(id,locale))))
+        .filter(d => d && (d.category_id === categoryId || (!d.category_id && category.duas?.some(v => String(v.id) === String(d.id)))))
+        .map(d => ({...d,isDownloaded:true}));
+      if (!current()) return;
+      const initial = saved.length ? saved : category.duas;
+      if (initial?.length) {setSelectedCategory({...category,duas:initial});setLoadingDuas(false);}
+      const remote = await fetchDuasByCategory(categoryId,locale);
+      if (!current() || !remote.length) return;
+      const online = new Set(remote.map(d => String(d.id)));
+      const offline = new Set(saved.map(d => String(d.id)));
+      const rows = [...remote.map(d => ({...d,isDownloaded:offline.has(String(d.id))})),...saved.filter(d => !online.has(String(d.id)))];
+      setSelectedCategory({...category,duas:rows});
+      setDbDuas(prev => ({...prev,[categoryId]:rows}));
+    } catch { /* Continue with saved and bundled content. */ }
+    finally { if (current()) setLoadingDuas(false); }
   };
 
   const isDuaDownloaded = async (duaId) => {
@@ -1142,7 +982,7 @@ const DUA_CATEGORIES = [
               {locale !== (selectedDua.contentLanguage || 'en') && selectedDua.translation ? (
                 <Text style={{ color: colors.textSecondary, marginTop: 8 }}>{tr('dua.translationFallback', { language: getLanguage(locale).nativeName })}</Text>
               ) : null}
-              <Text style={[dynamicStyles.duaTranslation, { writingDirection: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'rtl' : 'ltr', textAlign: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'right' : 'left' }]}>{selectedDua.translation || tr('dua.translationUnavailable')}</Text>
+              {selectedDua.translation !== selectedDua.arabic && <Text style={[dynamicStyles.duaTranslation, { writingDirection: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'rtl' : 'ltr', textAlign: ['ar', 'ur'].includes(selectedDua.contentLanguage) ? 'right' : 'left' }]}>{selectedDua.translation || tr('dua.translationUnavailable')}</Text>}
               {selectedDua.translationSource ? <Text style={{ color: colors.textSecondary, marginTop: 8 }}>{tr('dua.translationSource', { source: selectedDua.translationSource })}</Text> : null}
               
               {selectedDua.reference && (
@@ -1233,7 +1073,7 @@ const DUA_CATEGORIES = [
         <View style={dynamicStyles.container}>
           <View style={[styles.categoryHeader, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
             <TouchableOpacity
-              onPress={() => setSelectedCategory(null)}
+              onPress={() => { activeCategory.current=null; setSelectedCategory(null); }}
               style={styles.backButton}
             >
               <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.text} />

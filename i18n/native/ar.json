@@ -1,6 +1,6 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "يستخدم مسلم سينك موقعك لحساب مواقيت الصلاة والعثور على المساجد القريبة وتحديد اتجاه القبلة.",
-    "NSLocationAlwaysAndWhenInUseUsageDescription": "يستخدم مسلم سينك موقعك لحساب مواقيت الصلاة والعثور على المساجد القريبة وتحديد اتجاه القبلة."
+    "NSLocationWhenInUseUsageDescription": "يُحدّد اتجاه القبلة على الجهاز. عند اختيار الموقع لمواقيت الصلاة، تُرسل إحداثيات تقريبية إلى AlAdhan.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "يُحدّد اتجاه القبلة على الجهاز. عند اختيار الموقع لمواقيت الصلاة، تُرسل إحداثيات تقريبية إلى AlAdhan."
   }
 }

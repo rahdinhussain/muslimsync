@@ -1,16 +1,15 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Dimensions, Animated } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, AppState, Dimensions, Animated } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import * as Location from 'expo-location';
-import { format, addDays } from 'date-fns';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCachedLocation } from '../utils/locationCache';
-import { tr, prayerLabel, formatDate, formatPrayerTime, formatNumber } from '../i18n';
+import { CACHE, currentPrayerPlace, placeKey, readMethod } from '../utils/prayerPreferences';
+import schedule from '../utils/prayerSchedule.cjs';
+import { tr, prayerLabel, formatDate, formatPrayerTime } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
 
@@ -21,355 +20,96 @@ export default function PrayerTimesScreen() {
 
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
-  const [location, setLocation] = useState(null);
-  const [prayerTimes, setPrayerTimes] = useState(null);
-  const [hijriDate, setHijriDate] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [prayerMethod, setPrayerMethod] = useState(2); // Default: ISNA (method 2)
-  const [cityName, setCityName] = useState(null);
+  const focused = useIsFocused();
+  const [revision, setRevision] = useState(0);
+  const [settings, setSettings] = useState(null);
+  const [chosenDay, setChosenDay] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [windowData, setWindowData] = useState(null);
+  const [pending, setPending] = useState(true);
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const place = settings?.place;
+  const method = settings?.method;
+  const key = place ? placeKey(place, method) : null;
+  const matching = key && windowData?.key === key ? windowData : null;
+  const today = schedule.dayKey(new Date(now), matching?.zone);
+  const day = chosenDay || today;
+  const tomorrow = schedule.offsetDay(day, 1);
+  const selectedDate = new Date(day + 'T12:00:00');
+  const entry = matching?.days[day];
+  const validDay = entry?.date === day ? entry : null;
+  const active = day === today ? schedule.activePrayers(validDay, matching?.days[tomorrow], now) : {};
+  const nextPrayer = active.next;
+  const cityName = place?.label;
+  const refresh = () => setRevision(value => value + 1);
+  const openLocation = () => navigation.navigate('Settings', { screen: 'Location' });
 
   useEffect(() => {
-    loadCityName();
-    getLocation();
-    loadPrayerMethod();
-  }, []);
-
-  const loadCityName = async () => {
-    try {
-      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
-      if (cachedCity) {
-        setCityName(cachedCity);
-      }
-    } catch (error) {
-      // Error loading cached city name (non-critical)
-    }
-  };
-
-  // Animate the glow effect continuously
-  useEffect(() => {
-    const glowAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    glowAnimation.start();
-    return () => glowAnimation.stop();
-  }, [glowAnim]);
-
-  const loadPrayerMethod = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('@prayer_calculation_method');
-      if (saved !== null) {
-        setPrayerMethod(parseInt(saved, 10));
-      }
-    } catch (error) {
-      // Error loading prayer method (non-critical)
-    }
-  };
+    if (!focused) return;
+    let active = true;
+    Promise.all([currentPrayerPlace(), readMethod()]).then(([place, method]) => {
+      if (active) setSettings({ place, method });
+    }).catch(() => { if (active) setSettings({ place: null }); });
+    return () => { active = false; };
+  }, [focused, revision]);
 
   useEffect(() => {
-    if (location) {
-      fetchPrayerTimes();
-      fetchHijriDate();
-    }
-  }, [location, selectedDate, prayerMethod]);
-
-  // Reload city name when screen comes into focus (in case it was updated in settings)
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      loadCityName();
+    if (!focused) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 15000);
+    const listener = AppState.addEventListener('change', status => {
+      if (status === 'active') { setNow(Date.now()); refresh(); }
     });
-    return unsubscribe;
-  }, [navigation]);
+    return () => { clearInterval(tick); listener.remove(); };
+  }, [focused]);
 
-  const fetchHijriDate = async () => {
-    try {
-      // Try Aladhan API first (more reliable structure)
-      const date = format(selectedDate, 'dd-MM-yyyy');
-      const hijriUrl = `https://api.aladhan.com/v1/gToH/${date}`;
-      const hijriResponse = await fetch(hijriUrl);
-      const hijriData = await hijriResponse.json();
-      
-      if (hijriData.code === 200 && hijriData.data && hijriData.data.hijri) {
-        // Aladhan API structure: data.hijri.date (day), data.hijri.month.number, data.hijri.year
-        setHijriDate(hijriData.data.hijri);
+  useEffect(() => {
+    if (!focused) return;
+    const glow = Animated.loop(Animated.sequence([1, 0].map(toValue =>
+      Animated.timing(glowAnim, { toValue, duration: 2000, useNativeDriver: false })
+    )));
+    glow.start();
+    return () => glow.stop();
+  }, [focused, glowAnim]);
+
+  useEffect(() => {
+    if (!focused || !key) return;
+    let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    setPending(true);
+    async function load() {
+      let cached;
+      try { cached = JSON.parse(await AsyncStorage.getItem(CACHE)); } catch {}
+      if (!active) return;
+      const days = cached?.key === key ? { ...cached.days } : {};
+      const publish = offline => {
+        if (active) setWindowData({ key, days: { ...days }, zone: days[day]?.zone || days[tomorrow]?.zone || (cached?.key === key ? cached.zone : undefined), offline });
+      };
+      publish(true);
+      const results = await Promise.all([day, tomorrow].map(async date => {
+        try {
+          const response = await fetch(schedule.urlFor(place, method, date), { signal: controller.signal });
+          if (!response.ok) return false;
+          days[date] = schedule.parseDay(await response.json(), date, method);
+          return true;
+        } catch { return false; }
+      }));
+      if (!active) return;
+      for (const storedDate of Object.keys(days)) {
+        if (storedDate < schedule.offsetDay(day,-3) || storedDate > schedule.offsetDay(day,4)) delete days[storedDate];
       }
-    } catch (error) {
-      // Fallback to UmmahAPI
-      try {
-        const date = format(selectedDate, 'yyyy-MM-dd');
-        const hijriUrl = `https://ummahapi.com/api/hijri-date?date=${date}`;
-        const hijriResponse = await fetch(hijriUrl);
-        const hijriData = await hijriResponse.json();
-        
-        if (hijriData && hijriData.hijri) {
-          setHijriDate(hijriData.hijri);
-        } else if (hijriData && hijriData.data) {
-          setHijriDate(hijriData.data);
-        }
-      } catch (error2) {
-        // Will use fallback conversion
-      }
+      publish(!results[0]);
+      setPending(false);
+      if (results.some(Boolean)) await AsyncStorage.setItem(CACHE, JSON.stringify({key, days, zone: days[day]?.zone || days[tomorrow]?.zone})).catch(() => {});
     }
-  };
-
-  const getLocation = async () => {
-    try {
-      // Use shared cached location (same cache as Qibla screen)
-      const cachedLoc = await getCachedLocation(false);
-      
-      if (cachedLoc) {
-        setLocation(cachedLoc);
-        
-        // Only fetch city name if not already cached (first time)
-        const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
-        if (!cachedCity) {
-          getCityName(cachedLoc.latitude, cachedLoc.longitude);
-        }
-      } else {
-        // Fallback if cache fails
-        Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToGetLocationUsingDefaultLocation"));
-        setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
-        
-        const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
-        if (!cachedCity) {
-          getCityName(40.7128, -74.0060);
-        }
-      }
-    } catch (error) {
-      Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToGetLocationUsingDefaultLocation"));
-      setLocation({ latitude: 40.7128, longitude: -74.0060 }); // Default to NYC
-      
-      // Only fetch city name if not already cached (first time)
-      const cachedCity = await AsyncStorage.getItem('@prayer_city_name');
-      if (!cachedCity) {
-        getCityName(40.7128, -74.0060);
-      }
-    }
-  };
-
-  const getCityName = async (latitude, longitude, saveToStorage = true) => {
-    try {
-      const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude,
-        longitude,
-      });
-      
-      if (reverseGeocode && reverseGeocode.length > 0) {
-        const address = reverseGeocode[0];
-        // Try to get city, if not available use subAdministrativeArea or administrativeArea
-        const city = address.city || address.subAdministrativeArea || address.administrativeArea || 'Unknown';
-        setCityName(city);
-        
-        // Save to storage if requested
-        if (saveToStorage) {
-          await AsyncStorage.setItem('@prayer_city_name', city);
-          await AsyncStorage.setItem('@prayer_location_lat', String(latitude));
-          await AsyncStorage.setItem('@prayer_location_lng', String(longitude));
-        }
-      }
-    } catch (error) {
-      // Silently handle rate limit errors - city name is optional
-      if (error.message && error.message.includes('rate limit')) {
-        // Rate limit exceeded - just don't show city name
-        setCityName(null);
-      } else {
-        // Error getting city name (non-critical)
-        setCityName(null);
-      }
-    }
-  };
-
-  const fetchPrayerTimes = async () => {
-    if (!location) return;
-
-    setLoading(true);
-    try {
-      const date = format(selectedDate, 'yyyy-MM-dd');
-      const url = `https://api.aladhan.com/v1/timings/${date}?latitude=${location.latitude}&longitude=${location.longitude}&method=${prayerMethod}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.code === 200) {
-        setPrayerTimes(data.data.timings);
-      } else {
-        throw new Error('Failed to fetch prayer times');
-      }
-    } catch (error) {
-      Alert.alert(tr("status.error", { ns: 'common' }), tr("prayerTimes.failedToFetchPrayerTimesPleaseTryAgain"));
-      // Set default times for demo
-      setPrayerTimes({
-        Fajr: '05:30',
-        Dhuhr: '12:15',
-        Asr: '15:45',
-        Maghrib: '18:20',
-        Isha: '19:45',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getNextPrayer = () => {
-    if (!prayerTimes) return null;
-
-    const now = new Date();
-    const prayers = [
-      { name: 'Fajr', time: prayerTimes.Fajr },
-      { name: 'Dhuhr', time: prayerTimes.Dhuhr },
-      { name: 'Asr', time: prayerTimes.Asr },
-      { name: 'Maghrib', time: prayerTimes.Maghrib },
-      { name: 'Isha', time: prayerTimes.Isha },
-    ];
-
-    for (let prayer of prayers) {
-      const [hours, minutes] = prayer.time.split(':').map(Number);
-      const prayerTime = new Date(selectedDate);
-      prayerTime.setHours(hours, minutes, 0, 0);
-
-      if (prayerTime > now) {
-        return { ...prayer, time: prayerTime };
-      }
-    }
-
-    // If all prayers passed, return first prayer of next day
-    return { name: 'Fajr', time: addDays(selectedDate, 1) };
-  };
-
-  const getCurrentPrayer = () => {
-    if (!prayerTimes) return null;
-
-    const now = new Date();
-    const prayers = [
-      { name: 'Fajr', time: prayerTimes.Fajr },
-      { name: 'Dhuhr', time: prayerTimes.Dhuhr },
-      { name: 'Asr', time: prayerTimes.Asr },
-      { name: 'Maghrib', time: prayerTimes.Maghrib },
-      { name: 'Isha', time: prayerTimes.Isha },
-    ];
-
-    // Find the last prayer that has already passed
-    let currentPrayer = null;
-    for (let i = prayers.length - 1; i >= 0; i--) {
-      const prayer = prayers[i];
-      const [hours, minutes] = prayer.time.split(':').map(Number);
-      const prayerTime = new Date(selectedDate);
-      prayerTime.setHours(hours, minutes, 0, 0);
-
-      if (prayerTime <= now) {
-        currentPrayer = { ...prayer, time: prayerTime };
-        break;
-      }
-    }
-
-    // If no prayer has passed today, return the last prayer from previous day
-    // (This handles the case between Isha and Fajr)
-    if (!currentPrayer) {
-      return { name: 'Isha', time: prayers[prayers.length - 1].time };
-    }
-
-    return currentPrayer;
-  };
-
-  const formatTime = (timeString) => {
-    if (!timeString) return '--:--';
-    return timeString;
-  };
-
-  const formatArabicDate = (date) => {
-    const dayName = formatDate(date, { weekday: 'long' });
-    const hijriMonths = Array.from({ length: 12 }, (_, index) => tr(`calendar.month${index + 1}`));
-
-    // Use Hijri date from API if available
-    if (hijriDate) {
-      const day = dayName;
-      
-      // Aladhan API structure:
-      // hijriDate.day is the day as string (e.g., "16")
-      // hijriDate.month.number is the month number (1-12)
-      // hijriDate.month.en is the month name (but has special characters)
-      // hijriDate.year is the year as string (e.g., "1446")
-      
-      let dayNum, monthName, year;
-      
-      // Extract day - use 'day' field, not 'date' (date is the full date string)
-      if (hijriDate.day !== undefined) {
-        dayNum = typeof hijriDate.day === 'string' ? parseInt(hijriDate.day) : hijriDate.day;
-      } else if (hijriDate.date !== undefined) {
-        // If only date string is available, parse it (format: "DD-MM-YYYY")
-        const dateParts = hijriDate.date.split('-');
-        if (dateParts.length >= 1) {
-          dayNum = parseInt(dateParts[0]);
-        }
-      }
-      
-      // Extract month - use month.number to get correct month from our array
-      if (hijriDate.month?.number !== undefined) {
-        const monthNum = typeof hijriDate.month.number === 'string' 
-          ? parseInt(hijriDate.month.number) 
-          : hijriDate.month.number;
-        // month.number is 1-indexed (1-12), array is 0-indexed
-        monthName = hijriMonths[monthNum - 1];
-      } else if (hijriDate.month?.en) {
-        // Fallback to API month name if number not available
-        monthName = hijriDate.month.en;
-      }
-      
-      // Extract year
-      year = hijriDate.year;
-      if (typeof year === 'string') {
-        year = parseInt(year);
-      }
-      
-      if (dayNum && monthName && year) {
-        return `${day}, ${formatNumber(dayNum)} ${monthName} ${formatNumber(year, { useGrouping: false })}`;
-      }
-    }
-    
-    // Fallback: Use accurate conversion algorithm
-    const gregorianYear = date.getFullYear();
-    const gregorianMonth = date.getMonth() + 1; // JavaScript months are 0-indexed
-    const gregorianDay = date.getDate();
-    
-    // Accurate Gregorian to Hijri conversion
-    const jd = Math.floor((1461 * (gregorianYear + 4800 + Math.floor((gregorianMonth - 14) / 12))) / 4) +
-               Math.floor((367 * (gregorianMonth - 2 - 12 * Math.floor((gregorianMonth - 14) / 12))) / 12) -
-               Math.floor((3 * Math.floor((gregorianYear + 4900 + Math.floor((gregorianMonth - 14) / 12)) / 100)) / 4) +
-               gregorianDay - 32075;
-    
-    const l = jd - 1948440 + 10632;
-    const n = Math.floor((l - 1) / 10631);
-    const l2 = l - 10631 * n + 354;
-    const j = (Math.floor((10985 - l2) / 5316)) * (Math.floor((50 * l2) / 17719)) + (Math.floor(l2 / 5670)) * (Math.floor((43 * l2) / 15238));
-    const l3 = l2 - (Math.floor((30 - j) / 15)) * (Math.floor((17719 * j) / 50)) - (Math.floor(j / 16)) * (Math.floor((15238 * j) / 43)) + 29;
-    const hijriMonth = Math.floor((24 * l3) / 709);
-    const hijriDay = l3 - Math.floor((709 * hijriMonth) / 24);
-    const hijriYear = 30 * n + j - 30;
-    
-    const day = dayName;
-    const monthName = hijriMonths[hijriMonth - 1];
-    
-    return `${day}, ${formatNumber(hijriDay)} ${monthName} ${formatNumber(hijriYear, { useGrouping: false })}`;
-  };
-
-  const nextPrayer = getNextPrayer();
-  const currentPrayer = getCurrentPrayer();
+    load().finally(() => clearTimeout(timeout));
+    return () => { active = false; controller.abort(); clearTimeout(timeout); };
+  }, [key, day, tomorrow, focused, revision]);
 
   // Check if a prayer is the current active prayer
   const isCurrentPrayer = (prayerName) => {
-    return currentPrayer && currentPrayer.name === prayerName;
+    return active.current === prayerName;
   };
 
   // Get animated border style for current prayer
@@ -674,7 +414,7 @@ export default function PrayerTimesScreen() {
     },
   });
 
-  if (loading) {
+  if (!settings) {
     return (
       <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
         <View style={dynamicStyles.loadingContainer}>
@@ -689,15 +429,17 @@ export default function PrayerTimesScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
 
-      {nextPrayer && (
+      {(
         <View style={dynamicStyles.nextPrayerCard}>
           <View style={dynamicStyles.nextPrayerTopRow}>
             <View style={dynamicStyles.nextPrayerLeft}>
+              {nextPrayer ? <>
               <Text style={dynamicStyles.nextPrayerLabel}>{tr("prayers.nextPrayer", { ns: 'common' })}</Text>
               <Text style={dynamicStyles.nextPrayerName}>{prayerLabel(nextPrayer.name)}</Text>
               <Text style={dynamicStyles.nextPrayerTime}>
-                {formatDate(nextPrayer.time, { hour: 'numeric', minute: '2-digit' })}
+                {formatPrayerTime(nextPrayer.wall)}
               </Text>
+              </> : <Text style={dynamicStyles.nextPrayerLabel}>{tr("mosqueSchedule.prayerSchedule")}</Text>}
             </View>
             <View style={dynamicStyles.nextPrayerRight}>
               <Text style={dynamicStyles.cardDateText}>{formatDate(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
@@ -706,19 +448,19 @@ export default function PrayerTimesScreen() {
               )}
               <View style={dynamicStyles.cardDateControls}>
                 <TouchableOpacity
-                  onPress={() => setSelectedDate(addDays(selectedDate, -1))}
+                  onPress={() => setChosenDay(schedule.offsetDay(day, -1))}
                   style={dynamicStyles.cardDateButton}
                 >
                   <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={colors.text} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setSelectedDate(new Date())}
+                  onPress={() => setChosenDay(null)}
                   style={dynamicStyles.todayButton}
                 >
                   <Text style={dynamicStyles.todayButtonText}>{tr("prayers.today", { ns: 'common' })}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setSelectedDate(addDays(selectedDate, 1))}
+                  onPress={() => setChosenDay(schedule.offsetDay(day, 1))}
                   style={dynamicStyles.cardDateButton}
                 >
                   <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.text} />
@@ -729,6 +471,12 @@ export default function PrayerTimesScreen() {
         </View>
       )}
 
+      {(!validDay || matching?.offline || place?.lastKnown) && <View style={dynamicStyles.prayerCard}>
+        <Text style={{ color: colors.text, flexShrink: 1 }}>{tr(!place ? 'prayerTimes.chooseArea' : validDay ? 'prayerTimes.savedSchedule' : pending ? 'mosqueSchedule.loadingPrayerTimes' : 'prayerTimes.noVerifiedTimes')}</Text>
+      </View>}
+      <TouchableOpacity onPress={openLocation} style={dynamicStyles.refreshButton}>
+        <Text style={dynamicStyles.refreshButtonText}>{tr('settings.location', { ns: 'common' })}</Text>
+      </TouchableOpacity>
       <View style={styles.prayerTimesContainer}>
         {Object.entries(prayerNames).map(([key, prayer]) => (
           <Animated.View 
@@ -744,7 +492,7 @@ export default function PrayerTimesScreen() {
             <View style={styles.prayerInfo}>
               <Text style={dynamicStyles.prayerName}>{prayerLabel(prayer.name)}</Text>
               <Text style={dynamicStyles.prayerTime}>
-                {formatPrayerTime(prayerTimes?.[key])}
+                {formatPrayerTime(validDay?.prayers[key]?.wall)}
               </Text>
             </View>
           </Animated.View>
@@ -753,7 +501,7 @@ export default function PrayerTimesScreen() {
 
       <TouchableOpacity
         style={dynamicStyles.refreshButton}
-        onPress={fetchPrayerTimes}
+        onPress={refresh}
       >
         <Ionicons name="refresh" size={20} color={colors.text} />
         <Text style={dynamicStyles.refreshButtonText}>{tr("prayerTimes.refreshTimes")}</Text>

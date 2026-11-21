@@ -6,9 +6,8 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Aler
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
-import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCachedLocation, clearLocationCache } from '../utils/locationCache';
+import { LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
+import { readPlace, savePlace, locatePrayerPlace } from '../utils/prayerPreferences';
 import { tr } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -23,97 +22,31 @@ export default function LocationSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('');
   useEffect(() => {
-    loadStoredLocation();
+    let active = true;
+    readPlace().then(place => {
+      if (!active || !place) return;
+      setCurrentCity(place.label);
+      setCurrentLocation(place.mode === 'gps' ? place : null);
+      setCity(place.city || ''); setCountry(place.country || '');
+    }).catch(() => {}).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
-
-  const loadStoredLocation = async () => {
+  const updateLocation = async (manual = false) => {
+    if (manual && (!city.trim() || !country.trim())) return;
+    setUpdating(true);
     try {
-      setLoading(true);
-      
-      // Try to load from shared location cache first
-      try {
-        const cachedLoc = await getCachedLocation(false);
-        if (cachedLoc) {
-          setCurrentLocation(cachedLoc);
-        }
-      } catch (cacheError) {
-        // Fallback to old storage method
-        const lat = await AsyncStorage.getItem('@prayer_location_lat');
-        const lng = await AsyncStorage.getItem('@prayer_location_lng');
-        
-        if (lat && lng) {
-          setCurrentLocation({
-            latitude: parseFloat(lat),
-            longitude: parseFloat(lng),
-          });
-        }
-      }
-      
-      // Load city name
-      const city = await AsyncStorage.getItem('@prayer_city_name');
-      if (city) {
-        setCurrentCity(city);
-      }
-    } catch (error) {
-      // Error loading stored location (non-critical)
-    } finally {
-      setLoading(false);
-    }
+      const place = manual ? { mode: 'city', city: city.trim(), country: country.trim(), label: [city.trim(), country.trim()].join(', ') } : await locatePrayerPlace();
+      await savePlace(place);
+      setCurrentCity(place.label);
+      setCurrentLocation(manual ? null : place);
+      Alert.alert(tr('dua.success'), tr('locationSettings.locationUpdatedSuccessfully'));
+    } catch {
+      Alert.alert(tr('status.error', { ns: 'common' }), tr('locationSettings.failedToUpdateLocationPleaseTryAgain'));
+    } finally { setUpdating(false); }
   };
-
-  const updateLocation = async () => {
-    try {
-      setUpdating(true);
-      
-      // Force refresh location (bypass cache)
-      const newLocation = await getCachedLocation(true);
-      
-      if (!newLocation) {
-        Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToGetLocationPleaseTryAgain"));
-        setUpdating(false);
-        return;
-      }
-      
-      const { latitude, longitude } = newLocation;
-      
-      // Get city name
-      try {
-        const reverseGeocode = await Location.reverseGeocodeAsync({
-          latitude,
-          longitude,
-        });
-        
-        if (reverseGeocode && reverseGeocode.length > 0) {
-          const address = reverseGeocode[0];
-          const city = address.city || address.subAdministrativeArea || address.administrativeArea || 'Unknown';
-          
-          // Save to storage
-          await AsyncStorage.setItem('@prayer_city_name', city);
-          await AsyncStorage.setItem('@prayer_location_lat', String(latitude));
-          await AsyncStorage.setItem('@prayer_location_lng', String(longitude));
-          
-          setCurrentCity(city);
-          setCurrentLocation({ latitude, longitude });
-          
-          Alert.alert(tr("dua.success"), tr("locationSettings.locationUpdatedSuccessfully"));
-        } else {
-          Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.couldNotDetermineCityNameFromLocation"));
-        }
-      } catch (geocodeError) {
-        if (geocodeError.message && geocodeError.message.includes('rate limit')) {
-          Alert.alert(tr("locationSettings.rateLimit"), tr("locationSettings.tooManyRequestsPleaseTryAgainInA"));
-        } else {
-          Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToGetCityNamePleaseTryAgain"));
-        }
-      }
-    } catch (error) {
-      Alert.alert(tr("status.error", { ns: 'common' }), tr("locationSettings.failedToUpdateLocationPleaseTryAgain"));
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const dynamicStyles = StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -265,13 +198,13 @@ export default function LocationSettingsScreen() {
                     <View style={dynamicStyles.infoRow}>
                       <Text style={dynamicStyles.infoLabel}>{tr("locationSettings.latitude")}</Text>
                       <Text style={dynamicStyles.infoValue}>
-                        {currentLocation.latitude.toFixed(6)}
+                        {currentLocation.latitude.toFixed(2)}
                       </Text>
                     </View>
                     <View style={dynamicStyles.infoRow}>
                       <Text style={dynamicStyles.infoLabel}>{tr("locationSettings.longitude")}</Text>
                       <Text style={dynamicStyles.infoValue}>
-                        {currentLocation.longitude.toFixed(6)}
+                        {currentLocation.longitude.toFixed(2)}
                       </Text>
                     </View>
                   </>
@@ -284,9 +217,15 @@ export default function LocationSettingsScreen() {
               </View>
             )}
 
+            <Text style={{ color: colors.textSecondary }}>{tr('prayerTimes.areaDisclosure')}</Text>
+            <TextInput style={dynamicStyles.infoValue} placeholderTextColor={colors.textSecondary} placeholder={tr('locationSettings.city')} maxLength={100} value={city} onChangeText={setCity} />
+            <TextInput style={dynamicStyles.infoValue} placeholderTextColor={colors.textSecondary} placeholder={tr('prayerTimes.country')} maxLength={100} value={country} onChangeText={setCountry} />
+            <TouchableOpacity style={dynamicStyles.updateButton} onPress={() => updateLocation(true)} disabled={updating || !city.trim() || !country.trim()}>
+              <Text style={dynamicStyles.updateButtonText}>{tr('prayerTimes.useCity')}</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={dynamicStyles.updateButton}
-              onPress={updateLocation}
+              onPress={() => updateLocation()}
               disabled={updating}
             >
               {updating ? (

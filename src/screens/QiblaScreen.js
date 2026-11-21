@@ -4,9 +4,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, StyleSheet, Animated, TouchableOpacity, AppState } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { Magnetometer } from 'expo-sensors';
 import { useTheme } from '../hooks/useTheme';
-import { getCachedLocation, hasValidCachedLocation } from '../utils/locationCache';
+import { getCachedLocation } from '../utils/locationCache';
 import { tr } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -62,6 +63,8 @@ export default function QiblaScreen() {
   const { locale, isRTL } = useAppLocale();
 
   const { colors } = useTheme();
+  const focused = useIsFocused();
+  const [foreground,setForeground] = useState(AppState.currentState !== "background");
   const [location, setLocation] = useState(null);
   const [qiblaBearing, setQiblaBearing] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -72,13 +75,8 @@ export default function QiblaScreen() {
   const qiblaArrowRotation = useState(new Animated.Value(0))[0];
   
   // Refs for tracking - using refs to avoid re-renders
-  const smoothedHeadingRef = useRef(0);
-  const magDataRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const isActiveRef = useRef(true);
   
   // Light smoothing: 0.3 = 30% new data, 70% previous (just enough to reduce jitter)
-  const SMOOTHING_ALPHA = 0.3;
 
   // Load location from cache or fetch new one
   const loadLocation = async (forceRefresh = false) => {
@@ -102,90 +100,31 @@ export default function QiblaScreen() {
     }
   };
 
-  // Load location when screen opens
   useEffect(() => {
-    loadLocation();
+    const subscription = AppState.addEventListener('change', state => setForeground(state === 'active'));
+    return () => subscription.remove();
   }, []);
-
-  // Check if location needs refresh when app comes to foreground
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && location) {
-        // App came to foreground - check if location is stale
-        (async () => {
-          const isValid = await hasValidCachedLocation();
-          if (!isValid) {
-            // Location is stale, refresh it
-            loadLocation(true);
-          }
-        })();
-      }
-    });
-
-    return () => {
-      subscription?.remove();
-    };
-  }, [location]);
+    if (focused && foreground) loadLocation();
+  }, [focused, foreground]);
 
   // Manual refresh function
   const handleRefreshLocation = () => {
     loadLocation(true);
   };
 
-  // High-frequency sensor reading and smooth 60fps rendering
   useEffect(() => {
-    // Magnetometer subscription - reads at high frequency
-    const subscription = Magnetometer.addListener((data) => {
-      magDataRef.current = data;
+    if (!focused || !foreground) return;
+    let heading = null;
+    Magnetometer.setUpdateInterval(50);
+    const sub = Magnetometer.addListener(({x,y}) => {
+      const target = (Math.atan2(-x,y)*180/Math.PI+360)%360;
+      const delta = heading === null ? 0 : ((target-heading+540)%360)-180;
+      heading = heading === null ? target : (heading+delta*0.35+360)%360;
+      compassRotation.setValue(-heading);
     });
-
-    // Set sensor to update as fast as possible (16ms = ~60Hz)
-    Magnetometer.setUpdateInterval(16);
-
-    // Smooth 60fps rendering loop using requestAnimationFrame
-    const renderLoop = () => {
-      if (!isActiveRef.current) return;
-
-      if (magDataRef.current) {
-        const { x, y } = magDataRef.current;
-        
-        // Calculate heading from magnetometer
-        // For portrait mode: atan2(-x, y) gives heading from North
-        let rawHeading = Math.atan2(-x, y) * (180 / Math.PI);
-        rawHeading = (rawHeading + 360) % 360;
-        
-        // Apply light low-pass filter for minimal smoothing
-        // Handle 360-degree wrap-around
-        let diff = rawHeading - smoothedHeadingRef.current;
-        if (diff > 180) diff -= 360;
-        if (diff < -180) diff += 360;
-        
-        // Smooth: new = old + (difference * smoothing_factor)
-        smoothedHeadingRef.current = smoothedHeadingRef.current + diff * SMOOTHING_ALPHA;
-        smoothedHeadingRef.current = (smoothedHeadingRef.current + 360) % 360;
-        
-        // Calculate compass rotation: rotate compass opposite to heading so N always points north
-        const targetCompassRotation = -smoothedHeadingRef.current;
-        
-        // Update compass rotation DIRECTLY (no animation delay for instant response)
-        compassRotation.setValue(targetCompassRotation);
-      }
-
-      // Continue animation loop at 60fps
-      animationFrameRef.current = requestAnimationFrame(renderLoop);
-    };
-
-    // Start the render loop
-    animationFrameRef.current = requestAnimationFrame(renderLoop);
-
-    return () => {
-      isActiveRef.current = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      subscription && subscription.remove();
-    };
-  }, [compassRotation]);
+    return () => sub.remove();
+  }, [focused, foreground, compassRotation]);
 
   // Set Qibla arrow rotation (only when bearing changes, not on every frame)
   useEffect(() => {

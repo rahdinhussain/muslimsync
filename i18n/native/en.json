@@ -1,6 +1,6 @@
 {
   "ios": {
-    "NSLocationWhenInUseUsageDescription": "Muslim Sync uses your location to calculate prayer times, find nearby mosques, and determine the Qibla direction.",
-    "NSLocationAlwaysAndWhenInUseUsageDescription": "Muslim Sync uses your location to calculate prayer times, find nearby mosques, and determine the Qibla direction."
+    "NSLocationWhenInUseUsageDescription": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan."
   }
 }

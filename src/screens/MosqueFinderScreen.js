@@ -28,91 +28,59 @@ export default function MosqueFinderScreen() {
   const [showCountryOptions, setShowCountryOptions] = useState(false);
   const [showStateOptions, setShowStateOptions] = useState(false);
   const [showCityOptions, setShowCityOptions] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [page, setPage] = useState(0);
+  const [hasMore,setMore] = useState(false);
+  const [facets,setFacets] = useState([]);
   const scrollViewRef = useRef(null);
-
+  const queryId = JSON.stringify([searchQuery.trim(),filterCountry,filterState,filterCity]);
+  const activeQuery = useRef(null);
   useEffect(() => {
-    const fetchMosques = async () => {
-      try {
-        setLoading(true);
-        setLoadError(null);
-
-        const { data, error } = await supabase
-          .from('mosques')
-          .select('id, name, country, state, city, street, zip, latitude, longitude, phone, website, notice')
-          .order('city', { ascending: true })
-          .order('name', { ascending: true });
-
-        if (error) {
-          // Error loading mosques from Supabase
-          setLoadError('errors.loadMosques');
-          setMosques([]);
-        } else {
-          const mapped = (data || []).map((row) => ({
-            id: row.id,
-            name: row.name,
-            country: row.country,
-            state: row.state,
-            city: row.city,
-            address: row.street, // keep using address field in UI
-            zip: row.zip,
-            latitude: row.latitude,
-            longitude: row.longitude,
-            phone: row.phone,
-            website: row.website,
-            notice: row.notice,
-            prayerTimes: null, // daily times now come from separate table
-          }));
-          setMosques(mapped);
-        }
-      } catch (err) {
-        setLoadError('errors.loadMosques');
-        setMosques([]);
-      } finally {
-        setLoading(false);
+    let live = true;
+    (async () => {
+      const rows = [];
+      for (let start=0;live; start+=500) {
+        const {data,error}=await supabase.from('mosque_locations').select('country,state,city')
+          .order('country').order('state').order('city').range(start,start+499);
+        if (error || !live) return;
+        rows.push(...(data || []));
+        if ((data?.length || 0)<500) break;
       }
-    };
-
-    fetchMosques();
+      if (live) setFacets(rows);
+    })().catch(() => {});
+    return () => {live=false;};
   }, []);
-
-  // Reset visible count when filters or search change
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, filterCountry, filterState, filterCity]);
+    let live = true;
+    if (activeQuery.current !== queryId) {
+      activeQuery.current = queryId;
+      setMosques([]); setMore(false);
+      if (page !== 0) {setPage(0);return;}
+    }
+    const ctrl=new AbortController();
+    const timer=setTimeout(async () => {
+      setLoadError(null);
+      try {
+        const [search_text,country_filter,state_filter,city_filter]=JSON.parse(queryId);
+        const {data,error}=await supabase.rpc('search_mosques',{search_text,country_filter,state_filter,city_filter,
+          page_start:page*PAGE_SIZE,page_size:PAGE_SIZE+1}).abortSignal(ctrl.signal);
+        if (error) throw error;
+        if (!live) return;
+        const batch=(data || []).slice(0,PAGE_SIZE).map(m=>({...m,address:m.street}));
+        setMosques(prev=>page ? [...prev,...batch] : batch);
+        setMore((data?.length || 0)>PAGE_SIZE);
+      } catch { if (live) setLoadError('errors.loadMosques'); }
+      finally { if (live) setLoading(false); }
+    },searchQuery.trim()?200:0);
+    return () => {live=false;clearTimeout(timer);ctrl.abort();};
+  }, [queryId, page]);
 
   const activeFilterCount =
     (filterCountry ? 1 : 0) +
     (filterState ? 1 : 0) +
     (filterCity ? 1 : 0);
 
-  const filteredMosques = useMemo(() => {
-    return mosques.filter((mosque) => {
-      const matchesSearch =
-        mosque.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mosque.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mosque.city.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesCountry =
-        !filterCountry ||
-        (mosque.country || '').toLowerCase() === filterCountry.toLowerCase();
-      const matchesState =
-        !filterState ||
-        (mosque.state || '').toLowerCase() === filterState.toLowerCase();
-      const matchesCityFilter =
-        !filterCity ||
-        (mosque.city || '').toLowerCase() === filterCity.toLowerCase();
-
-      return matchesSearch && matchesCountry && matchesState && matchesCityFilter;
-    });
-  }, [mosques, searchQuery, filterCountry, filterState, filterCity]);
-
-  const limitedMosques = useMemo(
-    () => filteredMosques.slice(0, visibleCount),
-    [filteredMosques, visibleCount]
-  );
-
-  const hasMore = filteredMosques.length > visibleCount;
+  const filteredMosques = mosques;
+  const limitedMosques = mosques;
 
   const groupedByCity = useMemo(() => {
     return limitedMosques.reduce((groups, mosque) => {
@@ -127,17 +95,17 @@ export default function MosqueFinderScreen() {
   // Distinct lists for dropdowns
   const availableCountries = useMemo(() => {
     const set = new Set(
-      mosques
+      facets
         .map((m) => m.country)
         .filter((c) => c && c.trim().length > 0)
     );
     return Array.from(set).sort();
-  }, [mosques]);
+  }, [facets]);
 
   const availableStates = useMemo(() => {
     if (!filterCountry) return [];
     const set = new Set(
-      mosques
+      facets
         .filter(
           (m) =>
             m.country &&
@@ -147,12 +115,12 @@ export default function MosqueFinderScreen() {
         .filter((s) => s && s.trim().length > 0)
     );
     return Array.from(set).sort();
-  }, [mosques, filterCountry]);
+  }, [facets, filterCountry]);
 
   const availableCities = useMemo(() => {
     if (!filterCountry || !filterState) return [];
     const set = new Set(
-      mosques
+      facets
         .filter(
           (m) =>
             m.country &&
@@ -164,7 +132,7 @@ export default function MosqueFinderScreen() {
         .filter((c) => c && c.trim().length > 0)
     );
     return Array.from(set).sort();
-  }, [mosques, filterCountry, filterState]);
+  }, [facets, filterCountry, filterState]);
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {
@@ -403,7 +371,7 @@ export default function MosqueFinderScreen() {
       {loadError && (
         <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
           <Text style={[dynamicStyles.emptyText, { color: colors.text }]}>
-            {loadError}
+            {tr(loadError)}
           </Text>
         </View>
       )}
@@ -680,7 +648,7 @@ export default function MosqueFinderScreen() {
                     justifyContent: 'center',
                   }}
                   onPress={() => {
-                    setVisibleCount((prev) => prev + PAGE_SIZE);
+                    setMore(false); setPage(prev => prev + 1);
                     // After loading more, scroll to the end so the button stays at the bottom
                     setTimeout(() => {
                       if (scrollViewRef.current) {

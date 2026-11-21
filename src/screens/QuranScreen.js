@@ -1,6 +1,6 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Alert, Share, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -28,8 +28,8 @@ import {
 import { SURAHS } from '../data/surahs';
 import { getFontFamily } from '../utils/fontLoader';
 import { tr, formatNumber } from '../i18n';
-import quranSources from '../i18n/quran-sources.cjs';
-const { getTranslationEndpoints } = quranSources;
+import chapter from '../utils/quranChapter.cjs';
+import { saveChapterTranslation } from '../utils/quranStorage';
 import { useAppLocale } from '../context/LocaleContext';
 
 
@@ -41,8 +41,10 @@ export default function QuranScreen() {
   const { colors, isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSurah, setSelectedSurah] = useState(null);
-  const [verses, setVerses] = useState([]);
-  const [loadingVerses, setLoadingVerses] = useState(false);
+  const [result, setResult] = useState(null);
+  const [reload, setReload] = useState(0);
+  const listRef = useRef(null);
+  const pendingBookmark = useRef(null);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showTranslation, setShowTranslation] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,21 +66,38 @@ export default function QuranScreen() {
     ]);
   }, []);
 
-  // Reload settings when drawer closes
+  const requestKey = selectedSurah ? [selectedSurah.number, translationId, reload].join(':') : null;
+  const verses = result?.key === requestKey ? result.rows : [];
+  const loadingVerses = Boolean(requestKey && result?.key !== requestKey);
   useEffect(() => {
-    if (selectedSurah) {
-      loadSurahVerses();
-      setCurrentPage(1);
+    if (!selectedSurah) return;
+    const controller = new AbortController();
+    const signal = controller.signal;
+    async function read() {
+      const n = selectedSurah.number;
+      let arabic = await getSurahVerses(n);
+      if (!chapter.validate(arabic, selectedSurah.ayahs)) {
+        arabic = await chapter.fetchChapter(selectedSurah, null, signal);
+        if (!signal.aborted) await saveSurahVerses(n, arabic);
+      }
+      if (signal.aborted) return;
+      let translation = null;
+      if (translationId) {
+        try {
+          translation = await getSurahTranslation(n, translationId);
+          if (!chapter.validate(translation, selectedSurah.ayahs)) {
+            translation = await chapter.fetchChapter(selectedSurah, translationId, signal);
+            if (!signal.aborted) await saveChapterTranslation(n, translationId, translation).catch(() => {});
+          }
+        } catch { translation = null; }
+      }
+      if (!signal.aborted) setResult({key: requestKey, rows: arabic.map((verse, i) => ({
+        number: verse.number, text: verse.text, translation: translation?.[i]?.text || null
+      })), missingTranslation: Boolean(translationId && !translation)});
     }
-  }, [selectedSurah]);
-
-  // Reload verses when translation changes
-  useEffect(() => {
-    if (selectedSurah && translationId) {
-      // Reload verses to apply new translation
-      loadSurahVerses();
-    }
-  }, [translationId]);
+    read().catch(() => { if (!signal.aborted) setResult({key: requestKey, rows: []}); });
+    return () => controller.abort();
+  }, [selectedSurah, translationId, requestKey]);
 
   const loadSettings = async () => {
     const reciter = await getSelectedReciter();
@@ -113,21 +132,6 @@ export default function QuranScreen() {
     setRecitationLanguageLabel(null);
   }, [reciterId, locale]);
 
-  useEffect(() => {
-    // Load settings and bookmarks asynchronously without blocking
-    Promise.all([
-      loadSettings().catch(() => {}),
-      loadBookmarks().catch(() => {})
-    ]);
-  }, []);
-
-  // Reload settings when drawer closes
-  useEffect(() => {
-    if (!showSettingsDrawer) {
-      loadSettings();
-    }
-  }, [showSettingsDrawer]);
-
   const loadBookmarks = async () => {
     const savedBookmarks = await getBookmarks();
     setBookmarks(savedBookmarks);
@@ -139,730 +143,6 @@ export default function QuranScreen() {
     setVerseBookmarks(bookmarkMap);
   };
 
-  const loadSurahVerses = async () => {
-    if (!selectedSurah) return;
-
-    setLoadingVerses(true);
-    try {
-      // Always check cache first - if downloaded, use cache
-      const isDownloaded = await isSurahDownloaded(selectedSurah.number);
-      
-      if (isDownloaded) {
-        // Load from storage (downloaded file)
-        try {
-          let surahData = await getSurahVerses(selectedSurah.number);
-          // Validate cached data
-          if (surahData && Array.isArray(surahData) && surahData.length > 0) {
-            // Generic Arabic caches do not record a translation edition.
-            surahData = surahData.map((verse) => ({ ...verse, translation: null }));
-            // If translation is selected, check if it's downloaded for THIS surah and merge it
-            if (translationId) {
-              const downloadedTranslation = await getSurahTranslation(selectedSurah.number, translationId);
-              if (downloadedTranslation) {
-                // Translation is downloaded for this surah - use offline version
-                surahData = surahData.map(verse => {
-                  const translationVerse = downloadedTranslation.find(t => t.number === verse.number);
-                  return {
-                    ...verse,
-                    translation: translationVerse ? translationVerse.text : null,
-                  };
-                });
-              } else {
-                // Translation is selected but NOT downloaded for this surah - fetch only this surah from API
-                try {
-                  const apiEndpoints = getTranslationEndpoints(translationId, selectedSurah.number);
-
-                  for (const { url } of apiEndpoints) {
-                    try {
-                      const controller = new AbortController();
-                      const timeoutId = setTimeout(() => controller.abort(), 10000);
-                      
-                      const response = await fetch(url, {
-                        method: 'GET',
-                        headers: {
-                          'Accept': 'application/json',
-                          'Content-Type': 'application/json',
-                        },
-                        signal: controller.signal,
-                      });
-
-                      clearTimeout(timeoutId);
-
-                      if (response.ok) {
-                        const responseText = await response.text();
-                        if (responseText && responseText.trim() !== '' && responseText.trim() !== 'undefined') {
-                          try {
-                            const transData = JSON.parse(responseText);
-                            
-                            let apiTranslation = null;
-                            
-                            // Handle GitHub API format: { chapter: [{ chapter, verse, text }, ...] }
-                            if (transData.chapter && Array.isArray(transData.chapter) && transData.chapter.length > 0) {
-                              apiTranslation = transData.chapter.map((verse, idx) => {
-                                const num = verse.verse || verse.verse_number || verse.number || (idx + 1);
-                                return {
-                                  number: typeof num === 'string' ? parseInt(num, 10) : num,
-                                  text: (verse.text || '').trim(),
-                                };
-                              }).filter(t => t.text && t.text.length > 0);
-                            }
-                            // Handle Al-Quran Cloud format
-                            else if (transData.code === 200 && transData.data && transData.data.ayahs) {
-                              apiTranslation = transData.data.ayahs.map((ayah, idx) => {
-                                const num = ayah.numberInSurah || ayah.number || (idx + 1);
-                                return {
-                                  number: typeof num === 'string' ? parseInt(num, 10) : num,
-                                  text: (ayah.text || '').trim(),
-                                };
-                              }).filter(t => t.text && t.text.length > 0);
-                            }
-                            // Handle quran.com format
-                            else if (transData.translations && Array.isArray(transData.translations)) {
-                              apiTranslation = transData.translations.map((trans, idx) => {
-                                const num = trans.verse_number || trans.verseNumber || (idx + 1);
-                                return {
-                                  number: typeof num === 'string' ? parseInt(num, 10) : num,
-                                  text: (trans.text || trans.translated_text || '').trim(),
-                                };
-                              }).filter(t => t.text && t.text.length > 0);
-                            }
-                            // Handle direct array format
-                            else if (Array.isArray(transData) && transData.length > 0) {
-                              apiTranslation = transData.map((verse, idx) => {
-                                const num = verse.verse || verse.verse_number || verse.number || (idx + 1);
-                                return {
-                                  number: typeof num === 'string' ? parseInt(num, 10) : num,
-                                  text: (verse.text || '').trim(),
-                                };
-                              }).filter(t => t.text && t.text.length > 0);
-                            }
-
-                            if (apiTranslation && apiTranslation.length > 0) {
-                              surahData = surahData.map(verse => {
-                                // Try multiple matching strategies
-                                let translationVerse = apiTranslation.find(t => {
-                                  const tNum = typeof t.number === 'string' ? parseInt(t.number, 10) : t.number;
-                                  const vNum = typeof verse.number === 'string' ? parseInt(verse.number, 10) : verse.number;
-                                  return tNum === vNum;
-                                });
-                                
-                                // If not found, try matching by index
-                                if (!translationVerse && apiTranslation[verse.number - 1]) {
-                                  translationVerse = apiTranslation[verse.number - 1];
-                                }
-                                
-                                return {
-                                  ...verse,
-                                  translation: translationVerse && translationVerse.text ? translationVerse.text.trim() : null,
-                                };
-                              });
-                              break;
-                            } else {
-                            }
-                          } catch (parseError) {
-                            continue;
-                          }
-                        }
-                      }
-                    } catch (apiError) {
-                      continue;
-                    }
-                  }
-                } catch (error) {
-                }
-              }
-            }
-            
-            setVerses(surahData);
-            setLoadingVerses(false);
-            return; // Use downloaded file, don't fetch from API
-          } else {
-            // Cache is invalid, mark as not downloaded and fetch from API
-          }
-        } catch (cacheError) {
-          // If cache is corrupted, fetch from API
-        }
-      }
-
-      // If not downloaded or cache invalid, fetch from API
-
-      // Fetch from API - try multiple endpoints
-      let data = null;
-      let surahData = null;
-      const surahNum = selectedSurah.number;
-      
-      // Try multiple API endpoints with different formats - using reliable sources
-      const apiEndpoints = [
-        {
-          url: `https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number=${surahNum}`,
-          format: 'qurancom',
-        },
-        {
-          url: `https://api.alquran.cloud/v1/surah/${surahNum}`,
-          format: 'alquran',
-        },
-        {
-          url: `https://api.alquran.cloud/v1/surah/${surahNum}/quran-uthmani`,
-          format: 'alquran',
-        },
-        {
-          url: `https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/ara-quranuthmani/${surahNum}.json`,
-          format: 'jsdelivr',
-        },
-        {
-          url: `https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/ara-quranuthmani/${surahNum}.json`,
-          format: 'jsdelivr',
-        },
-      ];
-
-      let lastError = null;
-      
-      for (let i = 0; i < apiEndpoints.length; i++) {
-        try {
-          const { url, format } = apiEndpoints[i];
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          
-          const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            lastError = new Error(`HTTP ${response.status}`);
-            continue;
-          }
-
-          // Get response as text first
-          const responseText = await response.text();
-          
-          if (!responseText || responseText.trim() === '' || responseText.trim() === 'undefined') {
-            lastError = new Error('Empty response from API');
-            continue;
-          }
-
-            // Try to parse JSON
-          try {
-            data = JSON.parse(responseText);
-            
-            // Handle quran.com API format
-            if (format === 'qurancom' && data.verses && Array.isArray(data.verses) && data.verses.length > 0) {
-              data = {
-                code: 200,
-                data: {
-                  ayahs: data.verses.map((verse, index) => ({
-                    numberInSurah: verse.verse_number || (index + 1),
-                    text: verse.text_uthmani || verse.text || '',
-                    translation: null,
-                  })),
-                },
-              };
-              break; // Success!
-            }
-            // Handle Al-Quran Cloud format - can have different structures
-            else if (format === 'alquran' && data.code === 200 && data.data) {
-              // Structure 1: data.data.ayahs (standard format)
-              if (data.data.ayahs && Array.isArray(data.data.ayahs) && data.data.ayahs.length > 0) {
-                const validAyahs = data.data.ayahs.filter(ayah => ayah.text && ayah.text.trim() !== '');
-                if (validAyahs.length > 0) {
-                  break; // Success!
-                }
-              }
-              // Structure 2: data.data is an array, first element has ayahs
-              else if (Array.isArray(data.data) && data.data.length > 0) {
-                const surahData = data.data[0];
-                if (surahData.ayahs && Array.isArray(surahData.ayahs) && surahData.ayahs.length > 0) {
-                  const validAyahs = surahData.ayahs.filter(ayah => ayah.text && ayah.text.trim() !== '');
-                  if (validAyahs.length > 0) {
-                    // Transform to standard format
-                    data = {
-                      code: 200,
-                      data: {
-                        ayahs: surahData.ayahs.map((ayah, idx) => ({
-                          numberInSurah: ayah.numberInSurah || ayah.number || (idx + 1),
-                          text: ayah.text || '',
-                          translation: ayah.translation || null,
-                        })),
-                      },
-                    };
-                    break; // Success!
-                  }
-                }
-              }
-              // Structure 3: Format with edition wrapper
-              else if (data.data.edition && data.data.edition.ayahs && Array.isArray(data.data.edition.ayahs)) {
-                const validAyahs = data.data.edition.ayahs.filter(ayah => ayah.text && ayah.text.trim() !== '');
-                if (validAyahs.length > 0) {
-                  data = {
-                    code: 200,
-                    data: {
-                      ayahs: data.data.edition.ayahs.map((ayah, idx) => ({
-                        numberInSurah: ayah.numberInSurah || ayah.number || (idx + 1),
-                        text: ayah.text || '',
-                        translation: ayah.translation || null,
-                      })),
-                    },
-                  };
-                  break; // Success!
-                }
-              }
-            }
-            // Handle jsdelivr format (direct array)
-            else if (format === 'jsdelivr' && Array.isArray(data) && data.length > 0) {
-              data = {
-                code: 200,
-                data: {
-                  ayahs: data.map((v, idx) => ({
-                    numberInSurah: v.number || idx + 1,
-                    text: v.text || '',
-                    translation: null,
-                  })),
-                },
-              };
-              break; // Success!
-            }
-            // Try to extract from any structure (fallback)
-            else if (data && typeof data === 'object') {
-              // Try different possible structures
-              let ayahs = null;
-              
-              // Structure: data.data is array, first element has ayahs
-              if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-                const firstItem = data.data[0];
-                if (firstItem.ayahs && Array.isArray(firstItem.ayahs)) {
-                  ayahs = firstItem.ayahs;
-                }
-              }
-              
-              // Structure: data.data.ayahs
-              if (!ayahs && data.data && data.data.ayahs && Array.isArray(data.data.ayahs)) {
-                ayahs = data.data.ayahs;
-              }
-              
-              // Structure: data.ayahs
-              if (!ayahs && data.ayahs && Array.isArray(data.ayahs)) {
-                ayahs = data.ayahs;
-              }
-              
-              // Structure: data.verses
-              if (!ayahs && data.verses && Array.isArray(data.verses)) {
-                ayahs = data.verses;
-              }
-              
-              // Structure: data.data is array of verses
-              if (!ayahs && data.data && Array.isArray(data.data) && data.data.length > 0) {
-                // Check if first element looks like a verse (has text property)
-                if (data.data[0].text) {
-                  ayahs = data.data;
-                }
-              }
-              
-              // Structure: data is array of verses
-              if (!ayahs && Array.isArray(data) && data.length > 0 && data[0].text) {
-                ayahs = data;
-              }
-              
-              if (Array.isArray(ayahs) && ayahs.length > 0) {
-                // Validate ayahs have text
-                const validAyahs = ayahs.filter(ayah => ayah.text && ayah.text.trim() !== '');
-                if (validAyahs.length > 0) {
-                  data = {
-                    code: 200,
-                    data: { 
-                      ayahs: ayahs.map((ayah, idx) => ({
-                        numberInSurah: ayah.numberInSurah || ayah.number || (idx + 1),
-                        text: ayah.text || '',
-                        translation: ayah.translation || null,
-                      }))
-                    },
-                  };
-                  break; // Success!
-                }
-              }
-            }
-            
-            lastError = new Error('Invalid response structure');
-          } catch (jsonError) {
-            // JSON parse failed, trying next endpoint
-            lastError = jsonError;
-            continue;
-          }
-        } catch (apiError) {
-          console.error(`API ${i + 1} (${url}) failed:`, apiError.message);
-          if (apiError.name === 'AbortError') {
-            lastError = new Error('Request timed out after 10 seconds');
-          } else if (apiError.message.includes('Failed to fetch') || apiError.message.includes('Network')) {
-            lastError = new Error('Network error - please check your internet connection');
-          } else {
-            lastError = apiError;
-          }
-          if (i === apiEndpoints.length - 1) {
-            // Last endpoint failed
-            break;
-          }
-        }
-      }
-
-      // If all APIs failed, throw the last error with helpful message
-      if (!data || !data.code || data.code !== 200) {
-        const errorMsg = lastError?.message || 'All API endpoints failed';
-        throw new Error(errorMsg);
-      }
-
-      if (data && data.code === 200 && data.data && data.data.ayahs && Array.isArray(data.data.ayahs)) {
-        // Get downloaded translation if available for THIS surah only
-        let downloadedTranslation = null;
-        if (translationId) {
-          downloadedTranslation = await getSurahTranslation(selectedSurah.number, translationId);
-        }
-
-        // If translation is selected but not downloaded for THIS surah, fetch only THIS surah from API
-        if (translationId && !downloadedTranslation) {
-          try {
-            const apiEndpoints = getTranslationEndpoints(translationId, selectedSurah.number);
-
-            let translationFetched = false;
-            let lastError = null;
-            
-            
-            for (let i = 0; i < apiEndpoints.length; i++) {
-              const { url, format } = apiEndpoints[i];
-              try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 20000);
-                
-                const response = await fetch(url, {
-                  method: 'GET',
-                  headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                  },
-                  signal: controller.signal,
-                });
-
-                clearTimeout(timeoutId);
-
-                if (response.ok) {
-                  const responseText = await response.text();
-                  if (responseText && responseText.trim() !== '' && responseText.trim() !== 'undefined') {
-                    try {
-                      const transData = JSON.parse(responseText);
-                      
-                      // Handle GitHub/JSON format - actual format: { chapter: [{ chapter, verse, text }, ...] }
-                      if (format === 'github') {
-                        let versesArray = null;
-                        
-                        // Format 1: { chapter: [...] } - most common GitHub API format
-                        if (transData.chapter && Array.isArray(transData.chapter) && transData.chapter.length > 0) {
-                          versesArray = transData.chapter;
-                        }
-                        // Format 2: Direct array
-                        else if (Array.isArray(transData) && transData.length > 0) {
-                          versesArray = transData;
-                        }
-                        // Format 3: { verses: [...] }
-                        else if (transData.verses && Array.isArray(transData.verses) && transData.verses.length > 0) {
-                          versesArray = transData.verses;
-                        }
-                        
-                        if (versesArray && versesArray.length > 0) {
-                          downloadedTranslation = versesArray.map((verse, idx) => {
-                            // GitHub API uses 'verse' field for verse number
-                            const num = verse.verse || verse.verse_number || verse.verse_id || verse.number || (idx + 1);
-                            const text = verse.text || verse.translated_text || verse.translation || '';
-                            return {
-                              number: typeof num === 'string' ? parseInt(num, 10) : num,
-                              text: text.trim(),
-                            };
-                          }).filter(t => t.text && t.text.length > 0);
-                          
-                          if (downloadedTranslation.length > 0) {
-                            translationFetched = true;
-                            break;
-                          } else {
-                          }
-                        } else {
-                        }
-                      }
-                      
-                      // Handle quran.com API format
-                      if (format === 'qurancom' && transData.translations && Array.isArray(transData.translations) && transData.translations.length > 0) {
-                        downloadedTranslation = transData.translations.map((trans, idx) => {
-                          const num = trans.verse_number || trans.verseNumber || trans.verse_id || (idx + 1);
-                          return {
-                            number: typeof num === 'string' ? parseInt(num, 10) : num,
-                            text: (trans.text || trans.translated_text || '').trim(),
-                          };
-                        }).filter(t => t.text && t.text.length > 0);
-                        
-                        if (downloadedTranslation.length > 0) {
-                          translationFetched = true;
-                          break;
-                        }
-                      }
-                      
-                      // Handle Al-Quran Cloud format
-                      if (format === 'alquran' && transData.code === 200 && transData.data) {
-                        let ayahsArray = null;
-                        
-                        if (transData.data.ayahs && Array.isArray(transData.data.ayahs)) {
-                          ayahsArray = transData.data.ayahs;
-                        } else if (Array.isArray(transData.data) && transData.data.length > 0) {
-                          if (transData.data[0].ayahs && Array.isArray(transData.data[0].ayahs)) {
-                            ayahsArray = transData.data[0].ayahs;
-                          } else if (Array.isArray(transData.data[0])) {
-                            ayahsArray = transData.data[0];
-                          }
-                        } else if (transData.data.edition && transData.data.edition.ayahs) {
-                          ayahsArray = transData.data.edition.ayahs;
-                        }
-                        
-                        if (ayahsArray && Array.isArray(ayahsArray) && ayahsArray.length > 0) {
-                          downloadedTranslation = ayahsArray.map((ayah, idx) => {
-                            const num = ayah.numberInSurah || ayah.number || (idx + 1);
-                            return {
-                              number: typeof num === 'string' ? parseInt(num, 10) : num,
-                              text: (ayah.text || '').trim(),
-                            };
-                          }).filter(t => t.text && t.text.length > 0);
-                          
-                          if (downloadedTranslation.length > 0) {
-                            translationFetched = true;
-                            break;
-                          }
-                        }
-                      }
-                      
-                      // Generic fallback - try to extract any array of translation data
-                      if (!translationFetched) {
-                        // Try to find any array in the response
-                        let foundArray = null;
-                        if (transData.chapter && Array.isArray(transData.chapter)) {
-                          foundArray = transData.chapter;
-                        } else if (Array.isArray(transData)) {
-                          foundArray = transData;
-                        } else if (transData.data && Array.isArray(transData.data)) {
-                          foundArray = transData.data;
-                        } else if (transData.translations && Array.isArray(transData.translations)) {
-                          foundArray = transData.translations;
-                        } else if (transData.verses && Array.isArray(transData.verses)) {
-                          foundArray = transData.verses;
-                        }
-                        
-                        if (foundArray && foundArray.length > 0) {
-                          downloadedTranslation = foundArray.map((item, idx) => {
-                            const num = item.number || item.verse_number || item.verseNumber || item.verse_id || item.numberInSurah || (idx + 1);
-                            const text = item.text || item.translated_text || item.translation || '';
-                            return {
-                              number: typeof num === 'string' ? parseInt(num, 10) : num,
-                              text: text.trim(),
-                            };
-                          }).filter(t => t.text && t.text.length > 0);
-                          
-                          if (downloadedTranslation.length > 0) {
-                            translationFetched = true;
-                            break;
-                          }
-                        }
-                      }
-                      
-                      // If we got here, the response structure is unexpected
-                      lastError = `Unexpected response structure from endpoint ${i + 1} (${format}). Keys: ${Object.keys(transData).join(', ')}`;
-                    } catch (parseError) {
-                      lastError = `JSON parse error from endpoint ${i + 1}: ${parseError.message}`;
-                      continue;
-                    }
-                  } else {
-                    lastError = `Empty response from endpoint ${i + 1}`;
-                  }
-                } else {
-                  lastError = `HTTP ${response.status} from endpoint ${i + 1}`;
-                }
-              } catch (apiError) {
-                if (apiError.name === 'AbortError') {
-                  lastError = `Timeout from endpoint ${i + 1}`;
-                } else {
-                  lastError = `Error from endpoint ${i + 1}: ${apiError.message}`;
-                }
-                // Try next endpoint
-                continue;
-              }
-            }
-            
-            
-            if (!translationFetched && translationId && selectedSurah) {
-              // Show error to user if translation failed to load
-              Alert.alert(
-                tr("quran.translationError"),
-                tr("quran.failedToLoadTranslationForValueValue", { value1: selectedSurah.name || tr('quran.thisSurah'), value2: tr('quran.pleaseCheckYourInternetConnectionAndTryAgain') }),
-                [{ text: tr("quran.ok") }]
-              );
-            }
-          } catch (error) {
-            // Continue without translation
-          }
-        }
-
-        surahData = data.data.ayahs.map((ayah, index) => {
-          // Normalize verse number to integer
-          const verseNumber = typeof (ayah.numberInSurah || ayah.number || (index + 1)) === 'string' 
-            ? parseInt(ayah.numberInSurah || ayah.number || (index + 1), 10)
-            : (ayah.numberInSurah || ayah.number || (index + 1));
-          
-          // Use downloaded translation if available, otherwise use API translation
-          let verseTranslation = null;
-          if (downloadedTranslation && downloadedTranslation.length > 0) {
-            // Try multiple matching strategies
-            let translationVerse = downloadedTranslation.find(t => {
-              const tNum = typeof t.number === 'string' ? parseInt(t.number, 10) : t.number;
-              const vNum = typeof verseNumber === 'string' ? parseInt(verseNumber, 10) : verseNumber;
-              return tNum === vNum;
-            });
-            
-            // If not found, try matching by index (some APIs use 0-based or 1-based indexing differently)
-            if (!translationVerse && downloadedTranslation[index]) {
-              translationVerse = downloadedTranslation[index];
-            }
-            
-            // If still not found, try matching by position (verse number - 1 as index)
-            if (!translationVerse && downloadedTranslation[verseNumber - 1]) {
-              translationVerse = downloadedTranslation[verseNumber - 1];
-            }
-            
-            verseTranslation = translationVerse && translationVerse.text ? translationVerse.text.trim() : null;
-          } else {
-            verseTranslation = ayah.translation ? ayah.translation.trim() : null;
-          }
-          
-          return {
-            number: verseNumber,
-            text: ayah.text || '',
-            translation: verseTranslation,
-            audio: ayah.audio || null,
-          };
-        });
-        
-        // Check how many verses have translations
-        let versesWithTranslation = surahData.filter(v => v.translation && v.translation.trim() !== '').length;
-        
-        // If translation was supposed to be loaded but no verses have it, try alternative matching
-        if (translationId && versesWithTranslation === 0 && downloadedTranslation && downloadedTranslation.length > 0) {
-          // Try alternative matching - maybe verse numbers are offset
-          // Strategy 1: Re-merge with index-based matching as fallback
-          surahData = surahData.map((verse, idx) => {
-            if (!verse.translation && downloadedTranslation[idx] && downloadedTranslation[idx].text) {
-              return {
-                ...verse,
-                translation: downloadedTranslation[idx].text.trim(),
-              };
-            }
-            return verse;
-          });
-          
-          // Check again after fallback merge
-          versesWithTranslation = surahData.filter(v => v.translation && v.translation.trim() !== '').length;
-          
-          // Strategy 2: If still no matches, try matching by array position (verse number - 1)
-          if (versesWithTranslation === 0) {
-            surahData = surahData.map((verse) => {
-              if (!verse.translation && verse.number > 0) {
-                const translationIndex = verse.number - 1;
-                if (downloadedTranslation[translationIndex] && downloadedTranslation[translationIndex].text) {
-                  return {
-                    ...verse,
-                    translation: downloadedTranslation[translationIndex].text.trim(),
-                  };
-                }
-              }
-              return verse;
-            });
-            
-            versesWithTranslation = surahData.filter(v => v.translation && v.translation.trim() !== '').length;
-          }
-          
-          // Strategy 3: If still no matches, try matching by array index (force match)
-          if (versesWithTranslation === 0) {
-            // Just match by index - assume arrays are in the same order
-            const minLength = Math.min(surahData.length, downloadedTranslation.length);
-            surahData = surahData.map((verse, idx) => {
-              if (idx < minLength && !verse.translation && downloadedTranslation[idx] && downloadedTranslation[idx].text) {
-                return {
-                  ...verse,
-                  translation: downloadedTranslation[idx].text.trim(),
-                };
-              }
-              return verse;
-            });
-            
-            versesWithTranslation = surahData.filter(v => v.translation && v.translation.trim() !== '').length;
-          }
-        }
-        
-        // Final check - if we have translations but they're not showing, force match by index
-        if (translationId && versesWithTranslation === 0 && downloadedTranslation && downloadedTranslation.length > 0) {
-          const minLength = Math.min(surahData.length, downloadedTranslation.length);
-          for (let i = 0; i < minLength; i++) {
-            if (downloadedTranslation[i] && downloadedTranslation[i].text && !surahData[i].translation) {
-              surahData[i] = {
-                ...surahData[i],
-                translation: downloadedTranslation[i].text.trim(),
-              };
-            }
-          }
-        }
-
-        // Only cache if not already downloaded (to avoid overwriting downloaded content)
-        // If user wants to download, they should use the download button in drawer
-        const isAlreadyDownloaded = await isSurahDownloaded(selectedSurah.number);
-        if (!isAlreadyDownloaded) {
-          // Cache for temporary use (not marked as downloaded)
-          try {
-            await saveSurahVerses(selectedSurah.number, surahData);
-            // Don't mark as downloaded - only mark when user explicitly downloads
-          } catch (saveError) {
-            // Failed to cache verses (non-critical)
-            // Continue even if caching fails
-          }
-        }
-
-        setVerses(surahData);
-      } else {
-        // Invalid API response structure
-        setVerses([]); // Clear verses so user can retry
-        Alert.alert(
-          tr("quran.connectionIssue"),
-          tr("quran.unableToLoadVersesFromTheApiPlease"),
-          [{ text: tr("quran.ok") }]
-        );
-      }
-    } catch (error) {
-      // Error loading verses (handled by Alert below)
-      setVerses([]); // Clear verses so user can retry
-      
-      // Show user-friendly error message
-      const errorMessage = error.message || 'Unknown error';
-      if (errorMessage.includes('timeout') || errorMessage.includes('Network') || errorMessage.includes('fetch')) {
-        Alert.alert(
-          tr("quran.connectionError"),
-          tr("quran.unableToConnectToTheServerPleaseCheck"),
-          [{ text: tr("quran.ok") }]
-        );
-      } else if (!errorMessage.includes('Empty')) {
-        // Don't show alert for empty response errors (they're logged)
-        Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.failedToLoadVersesPleaseTryAgain"));
-      }
-    } finally {
-      setLoadingVerses(false);
-    }
-  };
-
   const handleDownload = async (reciter, translation) => {
     setReciterId(reciter);
     setTranslationId(translation);
@@ -870,7 +150,7 @@ export default function QuranScreen() {
   };
 
   const downloadSurah = async () => {
-    if (!selectedSurah || !reciterId || !translationId) {
+    if (!selectedSurah) {
       Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.pleaseConfigureDownloadSettingsFirst"));
       setShowDownloadModal(true);
       return;
@@ -885,7 +165,8 @@ export default function QuranScreen() {
           text: tr("actions.download", { ns: 'common' }),
           onPress: async () => {
             try {
-              await loadSurahVerses(); // This will cache the verses
+              const text = chapter.validate(verses, selectedSurah.ayahs) ? verses : await chapter.fetchChapter(selectedSurah);
+              await saveSurahVerses(selectedSurah.number, text, true);
               Alert.alert(tr("dua.success"), tr("quran.surahDownloadedSuccessfully"));
             } catch (error) {
               Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.failedToDownloadSurah"));
@@ -970,6 +251,8 @@ export default function QuranScreen() {
     <TouchableOpacity
       style={[dynamicStyles.surahCard, { backgroundColor: colors.card }]}
       onPress={() => {
+        pendingBookmark.current = null;
+        setCurrentPage(1);
         setSelectedSurah(item);
         setSearchQuery('');
       }}
@@ -1353,7 +636,7 @@ export default function QuranScreen() {
               <Text style={[styles.loadingText, { color: colors.textSecondary, marginTop: 10, textAlign: 'center', paddingHorizontal: 40 }]}>{tr("quran.tapTheButtonBelowToLoadVersesFrom")}</Text>
               <TouchableOpacity
                 style={[dynamicStyles.loadButton, { backgroundColor: colors.text, marginTop: 20 }]}
-                onPress={loadSurahVerses}
+                onPress={() => setReload(v => v + 1)}
               >
                 <Ionicons name="refresh" size={20} color={colors.background} />
                 <Text style={[dynamicStyles.loadButtonText, { color: colors.background }]}>{tr("quran.loadVerses")}</Text>
@@ -1362,12 +645,26 @@ export default function QuranScreen() {
           ) : (
             <>
               <FlatList
+                ref={listRef}
+                key={selectedSurah.number + ':' + currentPage}
+                initialNumToRender={VERSES_PER_PAGE}
+                onContentSizeChange={() => {
+                  const number = pendingBookmark.current;
+                  const index = paginatedVerses.findIndex(v => v.number === number);
+                  if (index >= 0) listRef.current?.scrollToIndex({index, animated: false});
+                }}
+                onScrollToIndexFailed={({averageItemLength, index}) =>
+                  listRef.current?.scrollToOffset({offset: averageItemLength * index, animated: false})}
+                onScrollBeginDrag={() => { pendingBookmark.current = null; }}
                 data={paginatedVerses}
                 renderItem={renderVerse}
                 keyExtractor={(item) => `${selectedSurah.number}_${item.number}`}
                 contentContainerStyle={styles.versesList}
                 ListHeaderComponent={
                   <>
+                    {result?.missingTranslation && <TouchableOpacity onPress={() => setReload(v => v + 1)}>
+                      <Text style={{color: colors.textSecondary}}>{tr('quran.translationUnavailableRetry')}</Text>
+                    </TouchableOpacity>}
                     {reciterId && (
                       <>
                         {recitationLanguageLabel && (
@@ -1447,18 +744,8 @@ export default function QuranScreen() {
             if (settings.fontSize !== undefined) setFontSize(settings.fontSize);
             if (settings.translation !== undefined) {
               const newTranslationId = settings.translation;
-              const translationChanged = newTranslationId !== translationId;
               setTranslationId(newTranslationId);
-              // Set showTranslation to true when translation is selected
-              if (newTranslationId) {
-                setShowTranslation(true);
-              } else {
-                setShowTranslation(false);
-              }
-              // Always reload verses when translation changes (if surah is selected)
-              if (selectedSurah && (settings.reloadVerses || translationChanged)) {
-                await loadSurahVerses();
-              }
+              setShowTranslation(Boolean(newTranslationId));
             }
             if (settings.reciter !== undefined) setReciterId(settings.reciter);
             if (settings.font !== undefined) {
@@ -1487,6 +774,9 @@ export default function QuranScreen() {
             <Text style={dynamicStyles.headerTitle}>{tr("quran.theHolyQuran")}</Text>
             <Text style={dynamicStyles.headerSubtitle}>{tr("quran.valueSurahs", { value1: SURAHS.length })}</Text>
           </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={tr("quran.bookmarksValue", {value1: bookmarks.length})} onPress={() => setShowBookmarks(true)} style={{padding: 8}}>
+            <Ionicons name="bookmarks-outline" size={26} color={colors.text} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowSettingsDrawer(true)}
             style={{ padding: 8, marginStart: 10 }}
@@ -1535,7 +825,7 @@ export default function QuranScreen() {
         onClose={async () => {
           setShowSettingsDrawer(false);
           // Reload settings when drawer closes
-          await loadSettings();
+          // Changes are applied by onSettingsChange.
         }}
         onSettingsChange={(settings) => {
           if (settings.font) setArabicFont(settings.font);
@@ -1571,13 +861,11 @@ export default function QuranScreen() {
                 onPress={() => {
                   const surah = SURAHS.find((s) => s.number === item.surahNumber);
                   if (surah) {
+                    pendingBookmark.current = item.verseNumber;
+                    setSearchQuery('');
+                    setCurrentPage(1 + Math.floor((item.verseNumber - 1) / VERSES_PER_PAGE));
                     setSelectedSurah(surah);
                     setShowBookmarks(false);
-                    // Scroll to verse after a delay
-                    setTimeout(() => {
-                      // This would require refs to scroll to specific verse
-                      // For now, just open the surah
-                    }, 100);
                   }
                 }}
               >

@@ -1,8 +1,9 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, AppState } from 'react-native';
 
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../hooks/useTheme';
@@ -56,40 +57,39 @@ const DHIKR_CATEGORIES = [
   const [counts, setCounts] = useState({});
   const [customDhikr, setCustomDhikr] = useState('');
 
-  const loadCounts = async () => {
-    try {
-      const savedCounts = await AsyncStorage.getItem('dhikr_counts');
-      if (savedCounts) {
-        setCounts(JSON.parse(savedCounts));
-      }
-    } catch (error) {
-      // Error loading counts (non-critical)
-    }
-  };
-
-  React.useEffect(() => {
-    loadCounts();
+  const latest = React.useRef({});
+  const timer = React.useRef();
+  const dirty = React.useRef(false);
+  const queue = React.useRef(Promise.resolve());
+  const hydrated = React.useRef(false);
+  const pending = React.useRef([]);
+  const flush = React.useCallback(() => {
+    clearTimeout(timer.current);
+    if (!hydrated.current || !dirty.current) return;
+    dirty.current=false;
+    const data=JSON.stringify(latest.current);
+    queue.current=queue.current.catch(() => {}).then(() => AsyncStorage.setItem('dhikr_counts',data)).catch(() => {dirty.current=true;});
   }, []);
-
-  const saveCount = async (dhikrId, count) => {
-    try {
-      const newCounts = { ...counts, [dhikrId]: count };
-      setCounts(newCounts);
-      await AsyncStorage.setItem('dhikr_counts', JSON.stringify(newCounts));
-    } catch (error) {
-      // Error saving count (non-critical)
-    }
+  React.useEffect(() => {
+    let mounted=true;
+    AsyncStorage.getItem('dhikr_counts').then(s => JSON.parse(s || '{}')).catch(() => ({})).then(saved => {
+      for (const [id,reset] of pending.current) saved[id]=reset ? 0 : (saved[id] || 0)+1;
+      pending.current=[]; latest.current=saved; hydrated.current=true;
+      if (mounted) setCounts(saved);
+      flush();
+    });
+    const sub=AppState.addEventListener('change',s => {if(s!=='active') flush();});
+    return () => {mounted=false;sub.remove();flush();};
+  }, [flush]);
+  useFocusEffect(React.useCallback(() => flush, [flush]));
+  const change = (id,reset) => {
+    if (!hydrated.current) pending.current.push([id,reset]);
+    latest.current={...latest.current,[id]:reset ? 0 : (latest.current[id] || 0)+1};
+    dirty.current=true;setCounts(latest.current);
+    clearTimeout(timer.current);timer.current=setTimeout(flush,300);
   };
-
-  const incrementCount = (dhikrId) => {
-    const currentCount = counts[dhikrId] || 0;
-    const newCount = currentCount + 1;
-    saveCount(dhikrId, newCount);
-  };
-
-  const resetCount = (dhikrId) => {
-    saveCount(dhikrId, 0);
-  };
+  const incrementCount = id => change(id,false);
+  const resetCount = id => change(id,true);
 
   const dynamicStyles = StyleSheet.create({
     safeArea: {

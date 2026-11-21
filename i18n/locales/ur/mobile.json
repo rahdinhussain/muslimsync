@@ -204,7 +204,13 @@
     "completeQuran": "مکمل قرآن",
     "readAndListenToTheHolyQuran": "قرآن پاک پڑھیں اور سنیں",
     "trackYourDailyRemembranceOfAllah": "اپنے روزانہ کے ذکر کا حساب رکھیں",
-    "discoverMosquesNearYouWithPrayerSchedules": "نماز کے شیڈول کے ساتھ قریبی مساجد تلاش کریں"
+    "discoverMosquesNearYouWithPrayerSchedules": "نماز کے شیڈول کے ساتھ قریبی مساجد تلاش کریں",
+    "chooseArea": "نماز کے اوقات کے لیے شہر منتخب کریں یا مقام کی اجازت دیں۔",
+    "savedSchedule": "اس تاریخ اور علاقے کا محفوظ جدول دکھایا جا رہا ہے۔",
+    "noVerifiedTimes": "اس تاریخ اور علاقے کے تصدیق شدہ اوقات دستیاب نہیں۔",
+    "useCity": "یہ شہر استعمال کریں",
+    "country": "ملک",
+    "areaDisclosure": "نماز کے اوقات کے لیے AlAdhan کو آپ کا شہر اور ملک ملتا ہے۔ آلے کا مقام چننے پر دو اعشاری مقامات تک کے مختصات بھیجے جاتے ہیں۔"
   },
   "qibla": {
     "qiblaDirection": "قبلے کی سمت",
@@ -260,7 +266,8 @@
     "recitationBilingual": "عربی اور انگریزی تلاوت — {{name}}",
     "thisSurah": "یہ سورت",
     "englishMeaning": "انگریزی ترجمہ",
-    "translationEditionNote": "قرآن کا ترجمہ ایپ کی زبان سے الگ منتخب کیا جاتا ہے۔"
+    "translationEditionNote": "قرآن کا ترجمہ ایپ کی زبان سے الگ منتخب کیا جاتا ہے۔",
+    "translationUnavailableRetry": "ترجمہ دستیاب نہیں۔ دوبارہ کوشش کے لیے دبائیں۔"
   },
   "theme": {
     "automatic": "خودکار",

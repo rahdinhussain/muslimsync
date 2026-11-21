@@ -63,7 +63,7 @@ export const markSurahDownloaded = async (surahNumber) => {
       await AsyncStorage.setItem(STORAGE_KEYS.DOWNLOADED_SURAHS, JSON.stringify(surahs));
     }
   } catch (error) {
-    console.error('Error marking surah as downloaded:', error);
+    throw error;
   }
 };
 
@@ -81,13 +81,13 @@ export const getDownloadedSurahs = async () => {
 export const saveSurahVerses = async (surahNumber, verses, markAsDownloaded = false) => {
   try {
     const key = `@quran_surah_${surahNumber}`;
-    await AsyncStorage.setItem(key, JSON.stringify(verses));
+    await AsyncStorage.setItem(key, JSON.stringify(verses.map(({number, text}) => ({number, text}))));
     // Only mark as downloaded if explicitly requested (e.g., from download button)
     if (markAsDownloaded) {
       await markSurahDownloaded(surahNumber);
     }
   } catch (error) {
-    console.error('Error saving surah verses:', error);
+    if (markAsDownloaded) throw error;
   }
 };
 
@@ -101,7 +101,7 @@ export const getSurahVerses = async (surahNumber) => {
     // Validate that it's valid JSON
     const parsed = JSON.parse(verses);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      return parsed.map(({number, text}) => ({number, text}));
     }
     return null;
   } catch (error) {
@@ -224,9 +224,15 @@ export const isBookmarked = async (surahNumber, verseNumber) => {
   }
 };
 
+const chapterKey = (number, edition) => translationStorageKey(edition) + ':chapter:' + number;
+export const saveChapterTranslation = (number, edition, rows) =>
+  AsyncStorage.setItem(chapterKey(number, edition), JSON.stringify(rows));
+
 // Get downloaded translation data for a surah
 export const getSurahTranslation = async (surahNumber, translationId) => {
   try {
+    const saved = await AsyncStorage.getItem(chapterKey(surahNumber, translationId));
+    if (saved) return JSON.parse(saved);
     const key = translationStorageKey(translationId);
     const translationData = await AsyncStorage.getItem(key);
     if (!translationData) return null;

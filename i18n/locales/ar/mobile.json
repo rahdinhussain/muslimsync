@@ -204,7 +204,13 @@
     "completeQuran": "القرآن كاملًا",
     "readAndListenToTheHolyQuran": "اقرأ القرآن الكريم واستمع إليه",
     "trackYourDailyRemembranceOfAllah": "تابع أذكارك اليومية",
-    "discoverMosquesNearYouWithPrayerSchedules": "اكتشف المساجد القريبة وجداول الصلاة فيها"
+    "discoverMosquesNearYouWithPrayerSchedules": "اكتشف المساجد القريبة وجداول الصلاة فيها",
+    "chooseArea": "اختر مدينة أو فعّل الموقع لعرض مواقيت الصلاة.",
+    "savedSchedule": "يُعرض جدول محفوظ لهذا اليوم وهذه المنطقة.",
+    "noVerifiedTimes": "لا يتوفر جدول مؤكّد لهذا اليوم وهذه المنطقة.",
+    "useCity": "استخدم هذه المدينة",
+    "country": "الدولة",
+    "areaDisclosure": "لحساب المواقيت يتلقى AlAdhan اسم المدينة والدولة، أو الإحداثيات مقربة إلى منزلتين عشريتين إذا اخترت موقع الجهاز."
   },
   "qibla": {
     "qiblaDirection": "اتجاه القبلة",
@@ -260,7 +266,8 @@
     "recitationBilingual": "تلاوة بالعربية والإنجليزية — {{name}}",
     "thisSurah": "هذه السورة",
     "englishMeaning": "الترجمة الإنجليزية",
-    "translationEditionNote": "تُختار ترجمة القرآن بشكل مستقل عن لغة التطبيق."
+    "translationEditionNote": "تُختار ترجمة القرآن بشكل مستقل عن لغة التطبيق.",
+    "translationUnavailableRetry": "تعذّر تحميل الترجمة. اضغط لإعادة المحاولة."
   },
   "theme": {
     "automatic": "تلقائي",

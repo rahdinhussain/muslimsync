@@ -204,7 +204,13 @@
     "completeQuran": "সম্পূর্ণ কুরআন",
     "readAndListenToTheHolyQuran": "পবিত্র কুরআন পড়ুন ও শুনুন",
     "trackYourDailyRemembranceOfAllah": "আপনার দৈনন্দিন যিকিরের হিসাব রাখুন",
-    "discoverMosquesNearYouWithPrayerSchedules": "নামাজের সময়সূচিসহ কাছাকাছি মসজিদ খুঁজুন"
+    "discoverMosquesNearYouWithPrayerSchedules": "নামাজের সময়সূচিসহ কাছাকাছি মসজিদ খুঁজুন",
+    "chooseArea": "নামাজের সময় দেখতে শহর বেছে নিন বা অবস্থানের অনুমতি দিন।",
+    "savedSchedule": "এই তারিখ ও এলাকার সংরক্ষিত সময়সূচি দেখানো হচ্ছে।",
+    "noVerifiedTimes": "এই তারিখ ও এলাকার যাচাইকৃত সময়সূচি নেই।",
+    "useCity": "এই শহর ব্যবহার করুন",
+    "country": "দেশ",
+    "areaDisclosure": "নামাজের সময় নির্ধারণে AlAdhan আপনার শহর ও দেশ পায়। ডিভাইসের অবস্থান বেছে নিলে দশমিকের পর দুই ঘর পর্যন্ত স্থানাঙ্ক পাঠানো হয়।"
   },
   "qibla": {
     "qiblaDirection": "কিবলার দিক",
@@ -260,7 +266,8 @@
     "recitationBilingual": "আরবি ও ইংরেজি তিলাওয়াত — {{name}}",
     "thisSurah": "এই সূরা",
     "englishMeaning": "ইংরেজি অনুবাদ",
-    "translationEditionNote": "কুরআনের অনুবাদ অ্যাপের ভাষা থেকে আলাদাভাবে বেছে নেওয়া হয়।"
+    "translationEditionNote": "কুরআনের অনুবাদ অ্যাপের ভাষা থেকে আলাদাভাবে বেছে নেওয়া হয়।",
+    "translationUnavailableRetry": "অনুবাদ পাওয়া যায়নি। আবার চেষ্টা করতে চাপুন।"
   },
   "theme": {
     "automatic": "স্বয়ংক্রিয়",
