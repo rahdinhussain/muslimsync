@@ -128,35 +128,9 @@ const ARABIC_FONTS = [
       
       const keys = await AsyncStorage.getAllKeys();
       setHasLegacyTranslations(keys.some((key) => key.startsWith('@quran_translation_') && !key.startsWith('@quran_translation_v2_') && key !== '@quran_translation_initialized_v1' && !keys.includes(translationStorageKey(key.slice('@quran_translation_'.length)))));
-      // Check which translations are actually downloaded (have data in storage)
-      const actuallyDownloaded = [];
-      if (downloadedTrans) {
-        try {
-          const transList = JSON.parse(downloadedTrans);
-          // Verify each translation actually has data
-          for (const transId of transList) {
-            const isDownloaded = await isTranslationDownloaded(transId);
-            // Also check if translation data exists in storage
-            const key = translationStorageKey(transId);
-            const translationData = await AsyncStorage.getItem(key);
-            if (translationData) {
-              try {
-                const parsed = JSON.parse(translationData);
-                // Check if it has data for at least one surah
-                if (parsed && Object.keys(parsed).length > 0) {
-                  actuallyDownloaded.push(transId);
-                }
-              } catch (e) {
-                // Invalid data, skip
-              }
-            }
-          }
-          setDownloadedTranslations(actuallyDownloaded);
-        } catch (e) {
-          console.log('Error parsing translations:', e);
-        }
-      }
-      
+      const installed = downloadedTrans ? JSON.parse(downloadedTrans) : [];
+      setDownloadedTranslations(installed.filter(id => keys.includes(translationStorageKey(id))));
+
       if (downloadedAud) {
         try {
           setDownloadedAudio(JSON.parse(downloadedAud));

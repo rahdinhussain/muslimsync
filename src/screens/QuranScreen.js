@@ -45,6 +45,8 @@ export default function QuranScreen() {
   const [reload, setReload] = useState(0);
   const listRef = useRef(null);
   const pendingBookmark = useRef(null);
+  const bookmarkRetry = useRef(null);
+  const bookmarkAttempts = useRef(0);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showTranslation, setShowTranslation] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +59,8 @@ export default function QuranScreen() {
   const [arabicFont, setArabicFont] = useState('system');
   const [fontSize, setFontSize] = useState(22);
   const [recitationLanguageLabel, setRecitationLanguageLabel] = useState(null);
+
+  useEffect(() => () => clearTimeout(bookmarkRetry.current), [selectedSurah, currentPage]);
 
   useEffect(() => {
     // Load settings and bookmarks asynchronously without blocking
@@ -653,8 +657,15 @@ export default function QuranScreen() {
                   const index = paginatedVerses.findIndex(v => v.number === number);
                   if (index >= 0) listRef.current?.scrollToIndex({index, animated: false});
                 }}
-                onScrollToIndexFailed={({averageItemLength, index}) =>
-                  listRef.current?.scrollToOffset({offset: averageItemLength * index, animated: false})}
+                onScrollToIndexFailed={({averageItemLength, index}) => {
+                  if (pendingBookmark.current == null) return;
+                  listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: false });
+                  if (++bookmarkAttempts.current > 5) return;
+                  clearTimeout(bookmarkRetry.current);
+                  bookmarkRetry.current = setTimeout(() => {
+                    if (pendingBookmark.current != null) listRef.current?.scrollToIndex({ index, animated: false });
+                  }, 120);
+                }}
                 onScrollBeginDrag={() => { pendingBookmark.current = null; }}
                 data={paginatedVerses}
                 renderItem={renderVerse}
@@ -861,6 +872,7 @@ export default function QuranScreen() {
                 onPress={() => {
                   const surah = SURAHS.find((s) => s.number === item.surahNumber);
                   if (surah) {
+                    bookmarkAttempts.current = 0;
                     pendingBookmark.current = item.verseNumber;
                     setSearchQuery('');
                     setCurrentPage(1 + Math.floor((item.verseNumber - 1) / VERSES_PER_PAGE));

@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import { supabase } from '../lib/supabase';
-import { format, addDays, subDays, isSameDay } from 'date-fns';
+import { format, addDays, subDays, isToday } from 'date-fns';
 import { tr, prayerLabel, formatDate, formatPrayerTime, formatNumber } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -254,9 +254,6 @@ export default function MosqueScheduleScreen({ route }) {
     setSelectedDate(nextDay);
   };
 
-  // Check if today is available
-
-
   const handleCall = async () => {
     if (!mosque.phone) return;
 
@@ -446,16 +443,9 @@ export default function MosqueScheduleScreen({ route }) {
           <View style={styles.noDataContainer}>
             <Ionicons name="time-outline" size={48} color={colors.textSecondary} />
             <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-              {(() => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const selectedDateNormalized = new Date(selectedDate);
-                selectedDateNormalized.setHours(0, 0, 0, 0);
-                if (isSameDay(selectedDateNormalized, today)) {
-                  return tr('mosqueSchedule.unavailableToday');
-                }
-                return tr('mosqueSchedule.unavailableDate', { date: formatDate(selectedDate, { year: 'numeric', month: 'long', day: 'numeric' }) });
-              })()}
+              {isToday(selectedDate)
+                ? tr('mosqueSchedule.unavailableToday')
+                : tr('mosqueSchedule.unavailableDate', { date: formatDate(selectedDate, { year: 'numeric', month: 'long', day: 'numeric' }) })}
             </Text>
           </View>
         ) : (

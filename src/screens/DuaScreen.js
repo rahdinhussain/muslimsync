@@ -372,49 +372,29 @@ const DUA_CATEGORIES = [
     }
   }, [selectedDua?.id, locale]);
 
-  // Check text download status and load downloaded text when dua is selected
+  // A storage read may finish after the reader has opened a different dua.
   useEffect(() => {
-    const checkAndLoadDownloadedText = async () => {
-      if (selectedDua?.id) {
-        const duaIdString = String(selectedDua.id);
-        const isTextDownloaded = await isDuaTextDownloaded(duaIdString, locale);
-        setDownloadedDuaTexts(prev => {
-          const newSet = new Set(prev);
-          if (isTextDownloaded) {
-            newSet.add(duaIdString);
-          } else {
-            newSet.delete(duaIdString);
-          }
-          return newSet;
-        });
-        
-        // If text is downloaded, load it and update selectedDua
-        if (isTextDownloaded) {
-          try {
-            const downloadedText = await getDownloadedDuaText(duaIdString, locale);
-            if (downloadedText) {
-              // Update selectedDua with downloaded text (prefer downloaded over API)
-              setSelectedDua(prev => ({
-                ...prev,
-                contentLanguage: downloadedText.contentLanguage,
-                requestedLocale: downloadedText.requestedLocale,
-                translationSource: downloadedText.translationSource,
-                title: downloadedText.title || prev?.title,
-                arabic: downloadedText.arabic || prev?.arabic,
-                transliteration: downloadedText.transliteration || prev?.transliteration,
-                translation: downloadedText.translation || prev?.translation,
-                reference: downloadedText.reference || prev?.reference,
-                isDownloaded: true,
-              }));
-            }
-          } catch (error) {
-            // Error loading downloaded text - use existing selectedDua
-            console.log('Error loading downloaded dua text:', error);
-          }
-        }
-      }
-    };
-    checkAndLoadDownloadedText();
+    if (!selectedDua?.id) return;
+    let active = true;
+    const id = String(selectedDua.id);
+    getDownloadedDuaText(id, locale).then(saved => {
+      if (!active) return;
+      setDownloadedDuaTexts(prev => {
+        const updated = new Set(prev);
+        if (saved) updated.add(id); else updated.delete(id);
+        return updated;
+      });
+      if (saved) setSelectedDua(prev => {
+        if (String(prev?.id) !== id) return prev;
+        if (prev.contentLanguage === locale && prev.translationSource) return { ...prev, isDownloaded: true };
+        return {
+          ...prev, ...saved, id: prev.id,
+          audioUrl: prev.audioUrl || saved.audioUrl,
+          isDownloaded: true,
+        };
+      });
+    }).catch(() => {});
+    return () => { active = false; };
   }, [selectedDua?.id, locale]);
 
   const loadDownloadedDuas = async () => {
@@ -428,16 +408,8 @@ const DUA_CATEGORIES = [
 
   const loadDownloadedDuaTexts = async () => {
     try {
-      // Check all downloaded audio duas to see if text is also downloaded
-      const audioList = await getDownloadedDuaTextIds(locale);
-      const textSet = new Set();
-      for (const duaId of audioList) {
-        const isTextDownloaded = await isDuaTextDownloaded(duaId, locale);
-        if (isTextDownloaded) {
-          textSet.add(duaId);
-        }
-      }
-      setDownloadedDuaTexts(textSet);
+      const ids = await getDownloadedDuaTextIds(locale);
+      if (localeRef.current === locale) setDownloadedDuaTexts(new Set(ids));
     } catch (error) {
       // Error loading downloaded dua texts (non-critical)
     }

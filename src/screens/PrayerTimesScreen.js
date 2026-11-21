@@ -429,7 +429,6 @@ export default function PrayerTimesScreen() {
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
       <ScrollView style={dynamicStyles.container}>
 
-      {(
         <View style={dynamicStyles.nextPrayerCard}>
           <View style={dynamicStyles.nextPrayerTopRow}>
             <View style={dynamicStyles.nextPrayerLeft}>
@@ -469,7 +468,6 @@ export default function PrayerTimesScreen() {
             </View>
           </View>
         </View>
-      )}
 
       {(!validDay || matching?.offline || place?.lastKnown) && <View style={dynamicStyles.prayerCard}>
         <Text style={{ color: colors.text, flexShrink: 1 }}>{tr(!place ? 'prayerTimes.chooseArea' : validDay ? 'prayerTimes.savedSchedule' : pending ? 'mosqueSchedule.loadingPrayerTimes' : 'prayerTimes.noVerifiedTimes')}</Text>
