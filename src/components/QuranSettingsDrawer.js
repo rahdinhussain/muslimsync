@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { RECITERS, TRANSLATIONS, getReciterName, getDownloadedSurahs, markSurahDownloaded, saveSurahVerses, isSurahDownloaded, isTranslationDownloaded } from '../utils/quranStorage';
+import { RECITERS, TRANSLATIONS, getReciterName, getDownloadedSurahs, markSurahDownloaded, saveSurahVerses, isSurahDownloaded, isTranslationDownloaded, getSurahTranslation, saveChapterTranslation, markEditionComplete } from '../utils/quranStorage';
 import { SURAHS } from '../data/surahs';
 import { tr, formatNumber } from '../i18n';
 import quranSources from '../i18n/quran-sources.cjs';
@@ -129,7 +129,8 @@ const ARABIC_FONTS = [
       const keys = await AsyncStorage.getAllKeys();
       setHasLegacyTranslations(keys.some((key) => key.startsWith('@quran_translation_') && !key.startsWith('@quran_translation_v2_') && key !== '@quran_translation_initialized_v1' && !keys.includes(translationStorageKey(key.slice('@quran_translation_'.length)))));
       const installed = downloadedTrans ? JSON.parse(downloadedTrans) : [];
-      setDownloadedTranslations(installed.filter(id => keys.includes(translationStorageKey(id))));
+      setDownloadedTranslations(TRANSLATIONS.map(t=>t.id).filter(id=>
+        keys.includes(translationStorageKey(id)+':complete') || (installed.includes(id) && keys.includes(translationStorageKey(id)))));
 
       if (downloadedAud) {
         try {
@@ -164,16 +165,7 @@ const ARABIC_FONTS = [
   const handleTranslationToggle = async (translationId, value) => {
     if (value) {
       // Check if translation is actually downloaded offline
-      const key = translationStorageKey(translationId);
-      const translationData = await AsyncStorage.getItem(key);
-      const isActuallyDownloaded = translationData ? (() => {
-        try {
-          const parsed = JSON.parse(translationData);
-          return parsed && Object.keys(parsed).length > 0;
-        } catch {
-          return false;
-        }
-      })() : false;
+      const isActuallyDownloaded=await isTranslationDownloaded(translationId);
 
       // Set as selected translation
       setSelectedTranslation(translationId);
@@ -231,7 +223,6 @@ const ARABIC_FONTS = [
           text: tr("actions.download", { ns: 'common' }),
           onPress: async () => {
             try {
-              const translationData = {};
               let successCount = 0;
               let failCount = 0;
 
@@ -243,12 +234,14 @@ const ARABIC_FONTS = [
                 }));
 
                 try {
-                  const verses = await fetchTranslationFromAPI(surah.number, translationId);
-                  translationData[surah.number] = verses;
+                  let verses=await getSurahTranslation(surah.number,translationId);
+                  const local=chapter.validate(verses,surah.ayahs);
+                  if(!local)verses=await fetchTranslationFromAPI(surah.number,translationId);
+                  await saveChapterTranslation(surah.number,translationId,verses);
                   successCount++;
                   
                   // Small delay to avoid overwhelming the API
-                  if (i < SURAHS.length - 1) {
+                  if (!local && i < SURAHS.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, 200));
                   }
                 } catch (error) {
@@ -257,18 +250,9 @@ const ARABIC_FONTS = [
                 }
               }
 
-              // Save translation data to AsyncStorage only after all surahs are processed
-              if (successCount > 0) {
-                const key = translationStorageKey(translationId);
-                await AsyncStorage.setItem(key, JSON.stringify(translationData));
-                
-                // Mark as downloaded
-                const updated = [...downloadedTranslations];
-                if (!updated.includes(translationId)) {
-                  updated.push(translationId);
-                  setDownloadedTranslations(updated);
-                  await AsyncStorage.setItem(STORAGE_KEYS.DOWNLOADED_TRANSLATIONS, JSON.stringify(updated));
-                }
+              if(successCount===SURAHS.length) {
+                await markEditionComplete(translationId);
+                setDownloadedTranslations(current=>Array.from(new Set([...current,translationId])));
               }
 
               // Clear downloading state before showing alert

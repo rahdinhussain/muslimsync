@@ -229,12 +229,47 @@ export const isBookmarked = async (surahNumber, verseNumber) => {
 };
 
 const chapterKey = (number, edition) => translationStorageKey(edition) + ':chapter:' + number;
-export const saveChapterTranslation = (number, edition, rows) =>
-  AsyncStorage.setItem(chapterKey(number, edition), JSON.stringify(rows));
+const chapterWrites=new Map();
+const completeKey=edition=>translationStorageKey(edition)+':complete';
+function editionFolder(edition) {
+  if(!TRANSLATIONS.some(item=>item.id===edition))throw Error('Unknown Quran edition');
+  return FileSystem.documentDirectory+'quran-editions-v1/'+edition+'/';
+}
+function chapterFile(number,edition) {
+  if(!Number.isInteger(number)||number<1||number>114)throw Error('Invalid chapter');
+  return editionFolder(edition)+number+'.json';
+}
+async function readChapterFile(number,edition) {
+  try {
+    const text=await FileSystem.readAsStringAsync(chapterFile(number,edition));
+    const rows=JSON.parse(text);
+    return Array.isArray(rows)&&rows.length?rows:null;
+  } catch {return null;}
+}
+// Chapters are independent files so large or partially downloaded editions
+// never have to fit in one Android SQLite row or share its settings quota.
+export function saveChapterTranslation(number,edition,rows) {
+  const dest=chapterFile(number,edition);
+  if(!chapterWrites.has(dest))chapterWrites.set(dest,(async()=>{
+    const existing=await readChapterFile(number,edition);
+    if(existing?.length===rows.length && existing.every((v,i)=>v.number===rows[i].number && v.text===rows[i].text))return;
+    await FileSystem.makeDirectoryAsync(editionFolder(edition),{intermediates:true});
+    const tmp=dest+'.part';
+    try {
+      await FileSystem.writeAsStringAsync(tmp,JSON.stringify(rows));
+      await FileSystem.deleteAsync(dest,{idempotent:true});
+      await FileSystem.moveAsync({from:tmp,to:dest});
+    } finally {await FileSystem.deleteAsync(tmp,{idempotent:true}).catch(()=>{});}
+  })().finally(()=>chapterWrites.delete(dest)));
+  return chapterWrites.get(dest);
+}
+export const markEditionComplete=edition=>AsyncStorage.setItem(completeKey(edition),'114');
 
 // Get downloaded translation data for a surah
 export const getSurahTranslation = async (surahNumber, translationId) => {
   try {
+    const file=await readChapterFile(surahNumber,translationId);
+    if(file)return file;
     const saved = await AsyncStorage.getItem(chapterKey(surahNumber, translationId));
     if (saved) return JSON.parse(saved);
     const key = translationStorageKey(translationId);
@@ -252,6 +287,7 @@ export const getSurahTranslation = async (surahNumber, translationId) => {
 // Check if translation is downloaded
 export const isTranslationDownloaded = async (translationId) => {
   try {
+    if(await AsyncStorage.getItem(completeKey(translationId))==='114')return true;
     const downloaded = await AsyncStorage.getItem(STORAGE_KEYS.DOWNLOADED_TRANSLATIONS);
     const translations = downloaded ? JSON.parse(downloaded) : [];
     if (!translations.includes(translationId)) return false;

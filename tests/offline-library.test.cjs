@@ -90,3 +90,23 @@ test('a saved full prayer month can be reopened locally by place and method',asy
   const offline=await m.readMonth('Dhaka/2','2028-02-29');assert.equal(offline['2028-02-29'].prayers.Fajr.wall,'05:15');
   assert.equal(await m.readMonth('Vancouver/2','2028-02-29'),null);assert.equal(requests,1);
 });
+test('full multilingual editions keep chapter bodies on disk and settings small',async()=>{
+  const files=new Map(),values=new Map(),storage={getItem:async k=>values.get(k)||null,setItem:async(k,v)=>{
+    assert.ok(v.length<150,'A chapter body reached the settings database');values.set(k,v);
+  }};
+  const FS={documentDirectory:'file:///documents/',makeDirectoryAsync:async()=>{},readAsStringAsync:async p=>{if(!files.has(p))throw Error('missing');return files.get(p);},
+    writeAsStringAsync:async(p,v)=>files.set(p,v),deleteAsync:async p=>files.delete(p),moveAsync:async({from,to})=>{files.set(to,files.get(from));files.delete(from);}};
+  const mocks={'expo-file-system/legacy':FS,'@react-native-async-storage/async-storage':storage,'../i18n':{currentLocale:()=>'bn',tr:k=>k},
+    '../i18n/quran-sources.cjs':require('../src/i18n/quran-sources.cjs')};
+  const store=await load('src/utils/quranStorage.js',mocks);
+  for(const edition of ['bn.bengali','hi.hindi']){
+    const rows=[{number:1,text:(edition==='bn.bengali'?'পরীক্ষা':'परीक्षण').repeat(1800)}];
+    for(let n=1;n<=114;n++)await store.saveChapterTranslation(n,edition,rows);
+    assert.equal(await store.isTranslationDownloaded(edition),false);
+    await store.markEditionComplete(edition);
+    const reopened=await load('src/utils/quranStorage.js',mocks);
+    assert.equal(await reopened.isTranslationDownloaded(edition),true);
+    assert.deepEqual(await reopened.getSurahTranslation(114,edition),rows);
+  }
+  assert.equal(files.size,228);assert.equal(values.size,2);
+});
