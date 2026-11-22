@@ -2,7 +2,7 @@
   "expo": {
     "name": "Muslim Sync",
     "slug": "muslim-sync",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.muslimsync.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Your device location determines Qibla locally. Choosing location for prayer times sends approximate coordinates to AlAdhan.",
@@ -40,7 +40,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.muslimsync.app",
-      "versionCode": 1,
+      "versionCode": 2026112201,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
