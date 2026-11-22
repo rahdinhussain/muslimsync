@@ -1,3 +1,5 @@
+import {readMonth,saveMosqueMonth} from '../utils/offlineContent';
+import {OfflineButton} from '../components/OfflineButton';
 import { useDirectoryCountry } from '../context/DirectoryCountry';
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
@@ -26,6 +28,7 @@ export default function MosqueScheduleScreen({ route }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
 
+  const [savedMonth,setSavedMonth]=useState(null),[revision,setRevision]=useState(0);
   const dynamicStyles = StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -218,12 +221,18 @@ export default function MosqueScheduleScreen({ route }) {
     setLoadingPrayerTimes(true);
     setPrayerTimes(null);
     const date = format(selectedDate,'yyyy-MM-dd');
-    supabase.from('mosque_prayer_times').select('times').eq('mosque_id',mosque.id).eq('date',date)
+    (async()=>{
+      const saved=await readMonth(country+'/'+mosque.id,date);
+      if(!live)return;
+      setSavedMonth(saved ? date.slice(0,7) : null);
+      if(saved){setPrayerTimes(saved[date]||null);setLoadingPrayerTimes(false);return;}
+      await supabase.from('mosque_prayer_times').select('times').eq('mosque_id',mosque.id).eq('date',date)
       .abortSignal(ctrl.signal).maybeSingle().then(({data}) => {
         if (live) {setPrayerTimes(data?.times || null);setLoadingPrayerTimes(false);}
       }, () => {if (live) setLoadingPrayerTimes(false);});
+    })().catch(()=>{if(live)setLoadingPrayerTimes(false);});
     return () => {live=false;ctrl.abort();};
-  },[selectedDate,mosque?.id]);
+  },[selectedDate,mosque?.id,country,revision]);
 
   const hasPreviousDate = () => {
     // Always allow going to previous day (no restrictions)
@@ -437,6 +446,8 @@ export default function MosqueScheduleScreen({ route }) {
           )}
         </View>
 
+        <OfflineButton saved={savedMonth===format(selectedDate,'yyyy-MM')} label={savedMonth===format(selectedDate,'yyyy-MM')?'library.updateMonth':'library.saveMonth'}
+          onSave={async()=>{await saveMosqueMonth(country,mosque.id,format(selectedDate,'yyyy-MM-dd'));setRevision(v=>v+1);}}/>
         {loadingPrayerTimes ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.text} />

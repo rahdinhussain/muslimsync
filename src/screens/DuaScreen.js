@@ -1,8 +1,10 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, AppState, RefreshControl, Dimensions } from 'react-native';
 
+import {useIsFocused} from '@react-navigation/native';
+import {saveAudio} from '../utils/audioDownload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -48,6 +50,10 @@ const CARD_WIDTH = (width - 40 - CARD_MARGIN) / 2; // 40 for container padding, 
 export default function DuaScreen() {
   const { locale, isRTL } = useAppLocale();
   const activeCategory = useRef(null);
+  const focused = useIsFocused();
+  const [refreshVersion,setRefreshVersion]=useState(0);
+  const categoryRequest=useRef(0), catalogRequest=useRef(0);
+  useEffect(()=>{const sub=AppState.addEventListener('change',s=>{if(s==='active')setRefreshVersion(n=>n+1);});return ()=>sub.remove();},[]);
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
@@ -350,7 +356,6 @@ const DUA_CATEGORIES = [
     setDownloadedDuaTexts(new Set());
     loadDownloadedDuas();
     loadDownloadedDuaTexts();
-    fetchCategories();
     return () => {
       if (sound) {
         sound.unloadAsync().catch(() => {});
@@ -372,6 +377,12 @@ const DUA_CATEGORIES = [
     }
   }, [selectedDua?.id, locale]);
 
+  useEffect(()=>{
+    if(!focused)return;
+    fetchCategories();
+    if(selectedCategory?.dbId && !selectedDua)fetchCategoryDuas(selectedCategory.dbId,selectedCategory);
+  },[locale,focused,refreshVersion]);
+
   // A storage read may finish after the reader has opened a different dua.
   useEffect(() => {
     if (!selectedDua?.id) return;
@@ -386,7 +397,6 @@ const DUA_CATEGORIES = [
       });
       if (saved) setSelectedDua(prev => {
         if (String(prev?.id) !== id) return prev;
-        if (prev.contentLanguage === locale && prev.translationSource) return { ...prev, isDownloaded: true };
         return {
           ...prev, ...saved, id: prev.id,
           audioUrl: prev.audioUrl || saved.audioUrl,
@@ -416,13 +426,18 @@ const DUA_CATEGORIES = [
   };
 
   const fetchCategories = async () => {
+    const request=++catalogRequest.current;
     const key = '@dua_catalog_v2_' + locale;
     setLoadingCategories(true);
     try {
-      const saved = JSON.parse(await AsyncStorage.getItem(key) || 'null');
-      if (saved && localeRef.current === locale) {setDbCategories(saved.categories);setDuaCounts(saved.counts);}
+      try {
+        const saved = JSON.parse(await AsyncStorage.getItem(key) || 'null');
+        if (Array.isArray(saved?.categories) && saved.counts && localeRef.current===locale && catalogRequest.current===request) {
+          setDbCategories(saved.categories);setDuaCounts(saved.counts);
+        }
+      } catch { /* The network can repair an unreadable cached catalog. */ }
       const [categories,counts] = await Promise.all([fetchDuaCategories(locale), fetchDuaCountsByCategory()]);
-      if (localeRef.current !== locale || !categories.length) return;
+      if (localeRef.current !== locale || catalogRequest.current!==request) return;
       setDbCategories(categories);setDuaCounts(counts);
       await AsyncStorage.setItem(key,JSON.stringify({categories,counts}));
     } catch { /* The bundled and saved catalogs remain available. */ }
@@ -488,7 +503,8 @@ const DUA_CATEGORIES = [
   };
 
   const fetchCategoryDuas = async (categoryId, category) => {
-    const current = () => activeCategory.current === categoryId && localeRef.current === locale;
+    const request=++categoryRequest.current;
+    const current = () => request===categoryRequest.current && activeCategory.current === categoryId && localeRef.current === locale;
     setLoadingDuas(true);
     try {
       const ids = await getDownloadedDuaTextIds(locale);
@@ -498,11 +514,8 @@ const DUA_CATEGORIES = [
       if (!current()) return;
       const initial = saved.length ? saved : category.duas;
       if (initial?.length) {setSelectedCategory({...category,duas:initial});setLoadingDuas(false);}
-      const remote = await fetchDuasByCategory(categoryId,locale);
-      if (!current() || !remote.length) return;
-      const online = new Set(remote.map(d => String(d.id)));
-      const offline = new Set(saved.map(d => String(d.id)));
-      const rows = [...remote.map(d => ({...d,isDownloaded:offline.has(String(d.id))})),...saved.filter(d => !online.has(String(d.id)))];
+      const rows = await fetchDuasByCategory(categoryId,locale,saved);
+      if (!current() || !rows.length) return;
       setSelectedCategory({...category,duas:rows});
       setDbDuas(prev => ({...prev,[categoryId]:rows}));
     } catch { /* Continue with saved and bundled content. */ }
@@ -514,9 +527,7 @@ const DUA_CATEGORIES = [
   };
 
   const getAudioUri = async (dua) => {
-    if (!dua.audioUrl) {
-      return null;
-    }
+
 
     const duaIdString = String(dua.id);
     
@@ -541,7 +552,7 @@ const DUA_CATEGORIES = [
         return;
       }
 
-      if (!dua.audioUrl) {
+      if (!dua.audioUrl && !await localAudioFileExists(String(dua.id))) {
         Alert.alert(tr("dua.noAudio"), tr("dua.audioIsNotAvailableForThisDua"));
         return;
       }
@@ -637,76 +648,11 @@ const DUA_CATEGORIES = [
     try {
       setDownloadingDua(dua.id);
       
-      // Ensure directory exists
-      const dirInfo = await FileSystem.getInfoAsync(AUDIO_DIR);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(AUDIO_DIR, { intermediates: true });
-      }
-
-      const fileUri = getLocalAudioPath(duaIdString);
-      let audioUrl = dua.audioUrl;
-      let downloadResult;
-
-      // Try primary URL first with fallback if available
-      if (dua.audioUrlFallback) {
-        try {
-          // Try primary URL first with shorter timeout (15 seconds)
-          const quickTimeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Download timeout')), 15000)
-          );
-          downloadResult = await Promise.race([
-            FileSystem.downloadAsync(audioUrl, fileUri),
-            quickTimeoutPromise
-          ]);
-        } catch (primaryError) {
-          // Fallback to fallback URL
-          audioUrl = dua.audioUrlFallback;
-          
-          // Delete any incomplete file
-          try {
-            const existingFileInfo = await FileSystem.getInfoAsync(fileUri);
-            if (existingFileInfo.exists) {
-              await FileSystem.deleteAsync(fileUri, { idempotent: true });
-            }
-          } catch (deleteError) {
-            // Ignore
-          }
-          
-          // Try with fallback URL
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Download timeout')), 60000)
-          );
-          downloadResult = await Promise.race([
-            FileSystem.downloadAsync(audioUrl, fileUri),
-            timeoutPromise
-          ]);
-        }
-      } else {
-        // Direct download for URLs without fallback
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Download timeout')), 60000)
-        );
-        downloadResult = await Promise.race([
-          FileSystem.downloadAsync(audioUrl, fileUri),
-          timeoutPromise
-        ]);
-      }
-
-      // Verify the file was actually downloaded
-      const downloadedFileInfo = await FileSystem.getInfoAsync(fileUri);
-      
-      if (downloadResult.status === 200 && downloadedFileInfo.exists && downloadedFileInfo.size > 0) {
-        // Mark audio as downloaded
-        await saveDownloadedDuaAudio(duaIdString);
-        await loadDownloadedDuas();
-        
-        // Automatically download text as well
-        await downloadDuaText(dua, true); // true = silent (no alert)
-        
-        Alert.alert(tr("dua.success"), tr("dua.duaAudioAndTextDownloadedSuccessfully"));
-      } else {
-        throw new Error('Download failed - file not saved properly');
-      }
+      await saveAudio(getLocalAudioPath(duaIdString),[dua.audioUrl,dua.audioUrlFallback]);
+      await downloadDuaText(dua,true);
+      await saveDownloadedDuaAudio(duaIdString);
+      await loadDownloadedDuas();
+      Alert.alert(tr("dua.success"), tr("dua.duaAudioAndTextDownloadedSuccessfully"));
     } catch (error) {
       // Error downloading audio
       Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToDownloadAudioPleaseCheckYourInternet"));
@@ -731,6 +677,7 @@ const DUA_CATEGORIES = [
         contentLanguage: dua.contentLanguage || 'en',
         translationSource: dua.translationSource || null,
         requestedLocale: locale,
+        audioUrl: dua.audioUrl, audioUrlFallback: dua.audioUrlFallback,
         id: duaIdString,
         title: dua.title,
         arabic: dua.arabic,
@@ -749,6 +696,7 @@ const DUA_CATEGORIES = [
         Alert.alert(tr("dua.success"), tr("dua.duaTextDownloadedSuccessfully"));
       }
     } catch (error) {
+      if(silent)throw error;
       // Error downloading dua text
       if (!silent) {
         Alert.alert(tr("status.error", { ns: 'common' }), tr("dua.failedToDownloadDuaText"));
@@ -968,7 +916,7 @@ const DUA_CATEGORIES = [
                 <TouchableOpacity
                   style={[styles.audioButton, styles.audioButtonLeft, { backgroundColor: colors.cardSecondary }]}
                   onPress={() => playAudio(selectedDua)}
-                  disabled={isLoading || !selectedDua.audioUrl}
+                  disabled={isLoading || (!selectedDua.audioUrl && !downloadedDuas.includes(String(selectedDua.id)))}
                 >
                   {isLoading ? (
                     <ActivityIndicator size="small" color={colors.text} />
@@ -1052,7 +1000,7 @@ const DUA_CATEGORIES = [
             </TouchableOpacity>
             <Text style={dynamicStyles.categoryTitle}>{selectedCategory.title}</Text>
           </View>
-          <ScrollView style={styles.duaList}>
+          <ScrollView style={styles.duaList} refreshControl={<RefreshControl refreshing={loadingDuas} onRefresh={()=>setRefreshVersion(n=>n+1)}/>}>
             {loadingDuas ? (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <ActivityIndicator size="large" color={colors.text} />
@@ -1084,7 +1032,7 @@ const DUA_CATEGORIES = [
 
   return (
     <SafeAreaView style={dynamicStyles.safeArea} edges={['top']}>
-      <ScrollView style={dynamicStyles.container}>
+      <ScrollView style={dynamicStyles.container} refreshControl={<RefreshControl refreshing={loadingCategories} onRefresh={()=>setRefreshVersion(n=>n+1)}/>}>
         <View style={dynamicStyles.header}>
           <Text style={dynamicStyles.headerTitle}>{tr("navigation.duas", { ns: 'common' })}</Text>
           <Text style={dynamicStyles.headerSubtitle}>{tr("dua.supplicationsForDailyLife")}</Text>

@@ -28,6 +28,9 @@ import HelpSupportScreen from './src/screens/HelpSupportScreen';
 import QiblaScreen from './src/screens/QiblaScreen';
 import LocationSettingsScreen from './src/screens/LocationSettingsScreen';
 
+import BooksScreen from './src/screens/BooksScreen';
+import BookReaderScreen from './src/screens/BookReaderScreen';
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -95,6 +98,8 @@ function SettingsStack() {
         name="Theme" 
         component={ThemeScreen}
       />
+      <Stack.Screen name="Books" component={BooksScreen} />
+      <Stack.Screen name="BookReader" component={BookReaderScreen} />
       <Stack.Screen name="Language" component={LanguageScreen} />
       <Stack.Screen 
         name="Location" 

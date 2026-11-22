@@ -13,106 +13,46 @@ const STORAGE_KEYS = {
 
 const AUDIO_DIR = `${FileSystem.documentDirectory}dua_audio/`;
 
-/**
- * Fetch all dua categories from the database
- * @returns {Promise<Array>} Array of category objects
- */
-export const fetchDuaCategories = async (locale = currentLocale()) => {
-  try {
-    const { data, error } = await supabase
-      .from('dua_categories')
-      .select('id, name, icon, slug, created_at, updated_at')
-      .order('name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching dua categories:', error);
-      return [];
-    }
-
-    // This optional table can be deployed independently of the application.
-    // Until it exists, preserve the original category instead of failing a screen.
-    let translations = [];
-    try {
-      const result = await supabase
-        .from('dua_category_translations')
-        .select('category_id, locale, name, reviewed')
-        .eq('locale', locale)
-        .eq('reviewed', true);
-      translations = result.data || [];
-    } catch { /* Missing optional table or connection: retain source categories. */ }
-    return (data || []).map((category) => {
-      const translated = (translations || []).find((entry) => entry.category_id === category.id);
-      return { ...category, name: translated?.name || category.name, isLocalized: Boolean(translated) };
-    });
-  } catch (error) {
-    console.error('Unexpected error fetching dua categories:', error);
-    return [];
+async function pages(makeQuery) {
+  const rows=[];
+  for(let start=0;;start+=250){
+    const {data,error}=await makeQuery().range(start,start+249);
+    if(error)throw error;
+    rows.push(...data);
+    if(data.length<250)return rows;
   }
-};
-
-/**
- * Fetch dua counts for all categories
- * @returns {Promise<Object>} Object mapping category_id to count
- */
-export const fetchDuaCountsByCategory = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('duas')
-      .select('category_id');
-
-    if (error) {
-      console.error('Error fetching dua counts:', error);
-      return {};
-    }
-
-    // Count duas per category
-    const counts = {};
-    (data || []).forEach((dua) => {
-      counts[dua.category_id] = (counts[dua.category_id] || 0) + 1;
-    });
-
-    return counts;
-  } catch (error) {
-    console.error('Unexpected error fetching dua counts:', error);
-    return {};
+}
+export async function fetchDuaCategories(locale=currentLocale()) {
+  const cats=await pages(()=>supabase.from('dua_categories').select('id,name,icon,slug').order('name').order('id'));
+  const translations=await pages(()=>supabase.from('dua_category_translations').select('category_id,name')
+    .eq('locale',locale).eq('reviewed',true).order('category_id')).catch(()=>[]);
+  const labels=new Map(translations.map(r=>[r.category_id,r.name]));
+  return cats.map(c=>({...c,name:labels.get(c.id)||c.name,isLocalized:labels.has(c.id)}));
+}
+export async function fetchDuaCountsByCategory() {
+  const rows=await pages(()=>supabase.from('duas').select('id,category_id').order('id'));
+  return rows.reduce((counts,r)=>{counts[r.category_id]=(counts[r.category_id]||0)+1;return counts;},{});
+}
+export async function fetchDuasByCategory(categoryId, locale=currentLocale(), saved=[]) {
+  const index=await pages(()=>supabase.from('duas').select('id').eq('category_id',categoryId)
+    .order('sequence_number',{ascending:true,nullsLast:true}).order('id'));
+  const byId=new Map(saved.map(d=>[String(d.id),d]));
+  const missing=index.map(d=>d.id).filter(id=>!byId.has(id));
+  for(let i=0;i<missing.length;i+=60) {
+    const ids=missing.slice(i,i+60);
+    const [rows,translations]=await Promise.all([
+      supabase.from('duas').select('id,category_id,name,arabic_text,transliteration,translation,reference,audio_url,audio_url_fallback')
+        .eq('category_id',categoryId).in('id',ids),
+      Promise.resolve(supabase.from('dua_translations').select('dua_id,locale,title,translation,transliteration,source,reviewed,updated_at')
+        .in('dua_id',ids).eq('locale',locale).eq('reviewed',true)).catch(()=>({data:[]}))
+    ]);
+    if(rows.error)throw rows.error;
+    const reviewed=new Map((translations.data||[]).map(r=>[r.dua_id,r]));
+    for(const d of rows.data)byId.set(d.id,mergeDuaTranslation(d,reviewed.get(d.id),locale));
   }
-};
-
-/**
- * Fetch duas for a specific category
- * @param {string} categoryId - UUID of the category
- * @returns {Promise<Array>} Array of dua objects
- */
-export const fetchDuasByCategory = async (categoryId, locale = currentLocale()) => {
-  try {
-    const { data, error } = await supabase
-      .from('duas')
-      .select('id, category_id, name, arabic_text, transliteration, translation, reference, audio_url, audio_url_fallback, sequence_number, created_at, updated_at')
-      .eq('category_id', categoryId)
-      .order('sequence_number', { ascending: true, nullsLast: true });
-
-    if (error) {
-      console.error('Error fetching duas by category:', error);
-      return [];
-    }
-
-    if (!data?.length) return [];
-    let translations = [];
-    try {
-      const result = await supabase
-        .from('dua_translations')
-        .select('dua_id, locale, title, translation, transliteration, source, reviewed, updated_at')
-        .in('dua_id', data.map(({ id }) => id))
-        .eq('locale', locale)
-        .eq('reviewed', true);
-      translations = result.data || [];
-    } catch { /* Missing optional table or connection: retain attributed fallback. */ }
-    return data.map((dua) => mergeDuaTranslation(dua, (translations || []).find((entry) => entry.dua_id === dua.id), locale));
-  } catch (error) {
-    console.error('Unexpected error fetching duas by category:', error);
-    return [];
-  }
-};
+  const published=new Set(index.map(d=>d.id));
+  return [...index.map(d=>byId.get(d.id)).filter(Boolean),...saved.filter(d=>!published.has(String(d.id)))];
+}
 
 /**
  * Save downloaded dua text to AsyncStorage

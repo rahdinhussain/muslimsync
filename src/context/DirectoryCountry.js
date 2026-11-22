@@ -56,7 +56,10 @@ export function DirectoryCountryProvider({ children }) {
     const controller=new AbortController();
     let live=true;
     setScope(previous=>previous?.subject===subject && subject!=='guest' && previous.country ? previous : null);
+    let verified = null;
+    const binding = '@directory.verified.v1.' + subject;
     async function load() {
+      verified = await AsyncStorage.getItem(binding).catch(()=>null);
       const cached = subject === 'guest' ? await AsyncStorage.getItem(HOME).catch(()=>null) : null;
       const place = await readPlace().catch(()=>null);
       const homeCountry = choice || cached || (place?.mode==='city' ? place.country : null);
@@ -65,15 +68,20 @@ export function DirectoryCountryProvider({ children }) {
         method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},
         signal:controller.signal,body:JSON.stringify({client:'native',homeCountry,deviceCountry})
       });
-      if(!response.ok) throw Error('Directory unavailable');
+      if(!response.ok) {
+        if(response.status===401||response.status===403){verified=null;await AsyncStorage.removeItem(binding).catch(()=>{});}
+        throw Error('Directory unavailable');
+      }
       const {country}=await response.json();
       if (country !== null && !valid(country)) throw Error('Invalid directory country');
       if (!live) return;
       if (choice && country && subject==='guest') await AsyncStorage.setItem(HOME,country);
+      if (country) await AsyncStorage.setItem(binding,country).catch(()=>{});
+      else await AsyncStorage.removeItem(binding).catch(()=>{});
       if (live) setScope({subject,country});
     }
     const timeout=setTimeout(()=>controller.abort(),12000);
-    load().catch(()=>{if(live)setScope({subject,error:true});}).finally(()=>clearTimeout(timeout));
+    load().catch(()=>{if(live)setScope(valid(verified) && !choice ? {subject,country:verified} : {subject,error:true});}).finally(()=>clearTimeout(timeout));
     return () => {live=false;clearTimeout(timeout);controller.abort();};
   }, [focused,active,ready,authError,subject,token,choice,attempt]);
 

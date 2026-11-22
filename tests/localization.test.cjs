@@ -174,7 +174,7 @@ test('optional content translation failures preserve existing duas and categorie
   const supabase = {
     from(table) {
       const query = {
-        select() { return this; }, eq() { return this; }, in() { return this; }, order() { return this; },
+        select() { return this; }, eq() { return this; }, in() { return this; }, range() { return this; }, order() { return this; },
         then(resolve, reject) {
           if (table.endsWith('_translations')) return Promise.reject(new Error('optional table unavailable')).then(resolve, reject);
           const data = table === 'dua_categories'

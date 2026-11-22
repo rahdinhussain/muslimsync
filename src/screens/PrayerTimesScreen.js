@@ -8,6 +8,8 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CACHE, currentPrayerPlace, placeKey, readMethod } from '../utils/prayerPreferences';
+import {OfflineButton} from '../components/OfflineButton';
+import {readMonth,savePrayerMonth} from '../utils/offlineContent';
 import schedule from '../utils/prayerSchedule.cjs';
 import { tr, prayerLabel, formatDate, formatPrayerTime } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
@@ -26,6 +28,7 @@ export default function PrayerTimesScreen() {
   const [chosenDay, setChosenDay] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [windowData, setWindowData] = useState(null);
+  const [savedMonth,setSavedMonth]=useState('');
   const [pending, setPending] = useState(true);
   const glowAnim = useRef(new Animated.Value(0)).current;
   const place = settings?.place;
@@ -86,9 +89,16 @@ export default function PrayerTimesScreen() {
       const publish = offline => {
         if (active) setWindowData({ key, days: { ...days }, zone: days[day]?.zone || days[tomorrow]?.zone || (cached?.key === key ? cached.zone : undefined), offline });
       };
+      const pinned=await readMonth(key,day).catch(()=>null);
+      const nextMonth=day.slice(0,7)===tomorrow.slice(0,7)?pinned:await readMonth(key,tomorrow).catch(()=>null);
+      if(!active)return;
+      setSavedMonth(pinned?key+day.slice(0,7):'');
+      if(pinned?.[day])days[day]=pinned[day];
+      if(nextMonth?.[tomorrow])days[tomorrow]=nextMonth[tomorrow];
       publish(true);
       const results = await Promise.all([day, tomorrow].map(async date => {
         try {
+          if((date===day?pinned:nextMonth)?.[date] || days[date]?.date===date) return true;
           const response = await fetch(schedule.urlFor(place, method, date), { signal: controller.signal });
           if (!response.ok) return false;
           days[date] = schedule.parseDay(await response.json(), date, method);
@@ -151,6 +161,7 @@ export default function PrayerTimesScreen() {
   };
 
   const quickActions = [
+    {id:'books',title:tr('library.books'),icon:'library-outline',color:colors.text,screen:'Settings',params:{screen:'Books'}},
     {
       id: 1,
       title: tr("prayerTimes.readQuran"),
@@ -475,6 +486,8 @@ export default function PrayerTimesScreen() {
       <TouchableOpacity onPress={openLocation} style={dynamicStyles.refreshButton}>
         <Text style={dynamicStyles.refreshButtonText}>{tr('settings.location', { ns: 'common' })}</Text>
       </TouchableOpacity>
+      {place && <OfflineButton saved={savedMonth===key+day.slice(0,7)} label={savedMonth===key+day.slice(0,7)?'library.updateMonth':'library.saveMonth'}
+        onSave={async()=>{await savePrayerMonth(place,method,key,day);refresh();}}/>}
       <View style={styles.prayerTimesContainer}>
         {Object.entries(prayerNames).map(([key, prayer]) => (
           <Animated.View 
@@ -512,7 +525,7 @@ export default function PrayerTimesScreen() {
             <TouchableOpacity
               key={action.id}
               style={dynamicStyles.quickActionCard}
-              onPress={() => navigation.navigate(action.screen)}
+              onPress={() => navigation.navigate(action.screen,action.params)}
             >
               <View style={[styles.iconContainer, { backgroundColor: colors.iconBackground }]}>
                 <Ionicons name={action.icon} size={32} color={action.color} />

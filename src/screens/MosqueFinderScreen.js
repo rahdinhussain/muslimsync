@@ -1,3 +1,5 @@
+import {readDirectory,downloadDirectory,forgetDirectory} from '../utils/offlineContent';
+import {OfflineButton} from '../components/OfflineButton';
 import { useDirectoryCountry, countryLabel } from '../context/DirectoryCountry';
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text, LocalizedTextInput as TextInput } from '../components/LocalizedPrimitives';
@@ -32,10 +34,14 @@ export default function MosqueFinderScreen() {
   const [hasMore,setMore] = useState(false);
   const [facets,setFacets] = useState([]);
   const scrollViewRef = useRef(null);
+  const [stored,setStored]=useState(undefined);
+  useEffect(()=>{let live=true;readDirectory(filterCountry).then(rows=>{if(live)setStored(rows);}).catch(()=>{if(live)setStored(null);});return ()=>{live=false;};},[filterCountry]);
   const queryId = JSON.stringify([searchQuery.trim(),filterCountry,filterState,filterCity]);
   const activeQuery = useRef(null);
   useEffect(() => {
     let live = true;
+    if(stored===undefined)return;
+    if(stored){setFacets(stored);return;}
     (async () => {
       const rows = [];
       for (let start=0;live; start+=500) {
@@ -48,13 +54,21 @@ export default function MosqueFinderScreen() {
       if (live) setFacets(rows);
     })().catch(() => {});
     return () => {live=false;};
-  }, [filterCountry]);
+  }, [filterCountry,stored]);
   useEffect(() => {
     let live = true;
     if (activeQuery.current !== queryId) {
       activeQuery.current = queryId;
       setMosques([]); setMore(false);
       if (page !== 0) {setPage(0);return;}
+    }
+    if(stored===undefined)return;
+    if(stored){
+      const [needle,,state,city]=JSON.parse(queryId).map(s=>s.toLowerCase());
+      const matches=stored.filter(m=>(!state||m.state?.toLowerCase()===state)&&(!city||m.city?.toLowerCase()===city)&&
+        [m.name,m.street,m.city,m.state,m.country,m.zip].filter(Boolean).join(' ').toLowerCase().includes(needle));
+      setMosques(matches.slice(0,(page+1)*PAGE_SIZE).map(m=>({...m,address:m.street})));setMore(matches.length>(page+1)*PAGE_SIZE);
+      setLoading(false);setLoadError(null);return;
     }
     const ctrl=new AbortController();
     const timer=setTimeout(async () => {
@@ -72,7 +86,7 @@ export default function MosqueFinderScreen() {
       finally { if (live) setLoading(false); }
     },searchQuery.trim()?200:0);
     return () => {live=false;clearTimeout(timer);ctrl.abort();};
-  }, [queryId, page]);
+  }, [queryId, page,stored]);
 
   const activeFilterCount =
     (filterState ? 1 : 0) +
@@ -331,6 +345,10 @@ export default function MosqueFinderScreen() {
         <Text style={dynamicStyles.headerSubtitle}>{tr("mosqueFinder.browseAndFilterMosques")}</Text>
       </View>
 
+      <View style={{flexDirection:'row',flexWrap:'wrap',paddingHorizontal:12}}>
+        <OfflineButton saved={!!stored} label={stored?'library.updateDirectory':'library.saveDirectory'} onSave={async()=>setStored(await downloadDirectory(filterCountry))}/>
+        {stored && <TouchableOpacity style={{padding:12}} onPress={async()=>{await forgetDirectory(filterCountry);setStored(null);}}><Text style={{color:colors.text}}>{tr('library.remove')}</Text></TouchableOpacity>}
+      </View>
       {loadError && (
         <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
           <Text style={[dynamicStyles.emptyText, { color: colors.text }]}>

@@ -17,6 +17,7 @@ export default function MenuScreen() {
   const navigation = useNavigation();
 
   const menuItems = [
+    { id: 'books', title: tr('library.books'), icon: 'library-outline', onPress: () => navigation.navigate('Books') },
     {
       id: 'language',
       title: tr('settings.language', { ns: 'common' }),

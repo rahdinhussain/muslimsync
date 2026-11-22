@@ -22,7 +22,7 @@ test('a registered country scopes the first page, facets and screens across acco
   t.after(()=>{global.fetch=oldFetch;});
   let listener,resolveCountry;
   const calls=[],facets=[],countries=[],session=(id)=>({user:{id},access_token:id});
-  const storage={getItem:async()=>null,setItem:async()=>{}};
+  const storage={getItem:async()=>null,setItem:async()=>{},removeItem:async()=>{}};
   const supabase={
     auth:{onAuthStateChange(cb){listener=cb;return {data:{subscription:{unsubscribe(){}}}};},getSession:async()=>({data:{session:session('bd-account')}})},
     from(table){assert.equal(table,'directory_mosque_locations');const q={
@@ -44,7 +44,7 @@ test('a registered country scopes the first page, facets and screens across acco
     '../context/LocaleContext':{useAppLocale:()=>({locale:'en'})},'../lib/supabase':{supabase},
     '../utils/prayerPreferences':{readPlace:async()=>null},'../config/directoryCountries.json':require('../src/config/directoryCountries.json')};
   const directory=load('src/context/DirectoryCountry.js',mocks);
-  const Finder=load('src/screens/MosqueFinderScreen.js',{...mocks,'../context/DirectoryCountry':directory}).default;
+  const Finder=load('src/screens/MosqueFinderScreen.js',{...mocks,'../components/OfflineButton':{OfflineButton:'offline-button'},'../utils/offlineContent':{readDirectory:async()=>null},'../context/DirectoryCountry':directory}).default;
   const tree=()=>React.createElement(directory.DirectoryCountryProvider,null,React.createElement(Finder));
   const has=(app,n)=>app.root.findAllByType('text').some(t=>t.children.includes(n));
   const settle=()=>act(()=>new Promise(resolve=>setTimeout(resolve,20)));

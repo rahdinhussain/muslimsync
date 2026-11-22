@@ -29,6 +29,7 @@ import { SURAHS } from '../data/surahs';
 import { getFontFamily } from '../utils/fontLoader';
 import { tr, formatNumber } from '../i18n';
 import chapter from '../utils/quranChapter.cjs';
+import { saveRecitation } from '../utils/audioDownload';
 import { saveChapterTranslation } from '../utils/quranStorage';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -48,6 +49,7 @@ export default function QuranScreen() {
   const bookmarkRetry = useRef(null);
   const bookmarkAttempts = useRef(0);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [savingChapter,setSavingChapter]=useState(false);
   const [showTranslation, setShowTranslation] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [reciterId, setReciterId] = useState(null);
@@ -168,13 +170,20 @@ export default function QuranScreen() {
         {
           text: tr("actions.download", { ns: 'common' }),
           onPress: async () => {
+            setSavingChapter(true);
             try {
               const text = chapter.validate(verses, selectedSurah.ayahs) ? verses : await chapter.fetchChapter(selectedSurah);
+              if(translationId){
+                let translated=await getSurahTranslation(selectedSurah.number,translationId);
+                if(!chapter.validate(translated,selectedSurah.ayahs))translated=await chapter.fetchChapter(selectedSurah,translationId);
+                await saveChapterTranslation(selectedSurah.number,translationId,translated);
+              }
+              if(reciterId)await saveRecitation(reciterId,selectedSurah.number);
               await saveSurahVerses(selectedSurah.number, text, true);
               Alert.alert(tr("dua.success"), tr("quran.surahDownloadedSuccessfully"));
             } catch (error) {
               Alert.alert(tr("status.error", { ns: 'common' }), tr("quran.failedToDownloadSurah"));
-            }
+            } finally {setSavingChapter(false);}
           },
         },
       ]
@@ -604,6 +613,10 @@ export default function QuranScreen() {
                 <Text style={dynamicStyles.surahHeaderArabic}>{selectedSurah.nameArabic}</Text>
               </View>
             </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={tr('library.download')} disabled={savingChapter}
+              style={dynamicStyles.headerActionButton} onPress={downloadSurah}>
+              {savingChapter?<ActivityIndicator size="small" color={colors.text}/>:<Ionicons name="download-outline" size={23} color={colors.text}/>}
+            </TouchableOpacity>
             <TouchableOpacity
               style={dynamicStyles.headerActionButton}
               onPress={() => setShowSettingsDrawer(true)}
