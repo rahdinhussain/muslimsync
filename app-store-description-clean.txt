@@ -9,7 +9,7 @@ ACCURATE PRAYER TIMES
 • Multiple calculation methods (ISNA, MWL, and more)
 • Beautiful countdown to next prayer
 • Hijri calendar integration
-• Customizable notifications
+• Choose a city or use your device location
 
 QIBLA COMPASS
 • Precise Qibla direction finder
@@ -23,6 +23,11 @@ COMPLETE QURAN
 • Audio recitations by renowned reciters
 • Download for offline access
 • Bookmark your favorite verses
+
+BOOKS
+• Open a PDF to read online or save it for offline reading
+• Jump to a page, zoom in, and return to where you left off
+• Browse new titles and categories as they are published
 
 COMPREHENSIVE DUA COLLECTION
 • Authentic duas for every occasion
@@ -44,7 +49,7 @@ MODERN & BEAUTIFUL DESIGN
 • Optimized for all devices
 
 Perfect for:
-• Daily prayer reminders
+• Checking daily prayer schedules
 • Quran study and recitation
 • Learning authentic duas
 • Finding prayer direction while traveling
@@ -52,6 +57,7 @@ Perfect for:
 
 Download Muslim Sync today and keep your faith close, wherever you are.
 
-Privacy: We respect your privacy. Location data is used only for prayer times and Qibla direction, and is never shared with third parties.
+Privacy
+The Qibla compass calculates direction on your device. For prayer times, you can enter a city or choose device location. If you choose device location, Muslim Sync sends approximate coordinates to AlAdhan for the prayer schedule.
 
 
