@@ -109,7 +109,7 @@ The Linux development workspace and ThinkCentre server inspected during release 
 Use a test installation to exercise:
 
 1. First install: language choice appears before location permission and navigation.
-2. Choose each of English, Bangla, Arabic, and Urdu; restart and confirm the explicit choice persists.
+2. Choose each language in the first-launch picker. Restart with a different device language and confirm that the explicit choice persists.
 3. Change language in Settings, including Arabic ↔ Bangla or Urdu ↔ English. Check tabs, settings, back gestures, drawers, long text, and text input direction.
 4. Confirm original Arabic scripture and Qibla compass bearings retain the correct direction.
 5. Test dates, numbers, prayer labels, permissions, and VoiceOver/TalkBack.

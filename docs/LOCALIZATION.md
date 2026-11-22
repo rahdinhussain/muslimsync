@@ -2,7 +2,7 @@
 
 ## Supported languages and startup
 
-The mobile interface ships with English (`en`), Bangla (`bn`), Arabic (`ar`), and Urdu (`ur`). Every interface catalog is bundled in the application; choosing a language and using translated interface text do not require a network connection.
+The mobile interface ships with English (`en`), Bangla (`bn`), Arabic (`ar`), Urdu (`ur`), Hindi (`hi`), Indonesian (`id`), Russian (`ru`), and Turkish (`tr`). Every interface catalog is bundled in the application; choosing a language and using translated interface text do not require a network connection.
 
 `LocaleProvider` reads `@muslim_sync_language_v1` from AsyncStorage before mounting the main navigator. A valid saved choice wins over the device language. Without a saved choice, the device language only suggests a supported option: the language picker still requires an explicit confirmation. Unsupported device languages suggest English.
 
@@ -26,7 +26,7 @@ The initial implementation contains 362 mobile messages and 73 common messages p
 
 ## Keeping web and mobile aligned
 
-The repositories share the language registry and common namespace. Each platform owns its platform-specific catalog. When a shared message changes, update all four languages and synchronize the shared assets explicitly:
+The repositories share the language registry and common namespace. Each platform owns its platform-specific catalog. When a shared message changes, update each supported language and synchronize the shared assets explicitly:
 
 ```sh
 node scripts/sync-shared-locales.mjs --from /path/to/other/repository
@@ -48,7 +48,7 @@ Native permission dialogs and system UI follow operating-system language rules. 
 
 ## Quran editions are independent content
 
-The app interface language and Quran edition are separate preferences. On first use, if there is no prior Quran preference, the app suggests `en.sahih` for English, `bn.bengali` for Bangla, or `ur.maududi` for Urdu. Arabic starts without an additional translation. After initialization, changing the interface language preserves the saved Quran edition, including an explicit deselection.
+The app interface language and Quran edition are separate preferences. On first use, if there is no prior Quran preference, the app suggests `en.sahih` for English, `bn.bengali` for Bangla, `ur.maududi` for Urdu, `hi.hindi` for Hindi, `id.indonesian` for Indonesian, `ru.kuliev` for Russian, or `tr.diyanet` for Turkish. Arabic starts without an additional translation. After initialization, changing the interface language preserves the saved Quran edition, including an explicit deselection.
 
 Two named Bangla editions are available:
 
