@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "Kıble yönü cihaz konumunuz kullanılarak cihazda hesaplanır. Namaz vakitleri için cihaz konumunu seçerseniz yaklaşık koordinatlar AlAdhan’a gönderilir.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "Kıble yönü cihaz konumunuz kullanılarak cihazda hesaplanır. Namaz vakitleri için cihaz konumunu seçerseniz yaklaşık koordinatlar AlAdhan’a gönderilir."
+  }
+}

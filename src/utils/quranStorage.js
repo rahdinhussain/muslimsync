@@ -38,6 +38,10 @@ export const TRANSLATIONS = [
   { id: 'bn.bengali', name: 'মুহিউদ্দীন খান (বাংলা)' },
   { id: 'bn.hoque', name: 'জহুরুল হক (বাংলা)' },
   { id: 'ur.maududi', name: 'Maududi (Urdu)' },
+  { id: 'hi.hindi', name: 'सुहैल फ़ारूक़ ख़ान और सैफ़ुर्रहमान नदवी (हिन्दी)' },
+  { id: 'id.indonesian', name: 'Bahasa Indonesia' },
+  { id: 'ru.kuliev', name: 'Эльмир Кулиев (Русский)' },
+  { id: 'tr.diyanet', name: 'Diyanet İşleri Başkanlığı (Türkçe)' },
   { id: 'fr.hamidullah', name: 'Hamidullah (French)' },
   { id: 'es.borneo', name: 'Borneo (Spanish)' },
 ];
@@ -151,7 +155,7 @@ export const getSelectedTranslation = async (preferredLocale = currentLocale()) 
     if (existing) return existing;
     const initializedKey = '@quran_translation_initialized_v1';
     if (await AsyncStorage.getItem(initializedKey)) return null;
-    const suggested = { en: 'en.sahih', bn: 'bn.bengali', ur: 'ur.maududi' }[preferredLocale] || null;
+    const suggested = TRANSLATIONS.find(({ id }) => id.startsWith(preferredLocale + '.'))?.id || null;
     if (suggested) await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TRANSLATION, suggested);
     await AsyncStorage.setItem(initializedKey, 'true');
     return suggested;

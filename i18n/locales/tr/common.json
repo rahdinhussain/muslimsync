@@ -1,0 +1,89 @@
+{
+  "actions": {
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "close": "Kapat",
+    "continue": "Devam et",
+    "back": "Geri",
+    "select": "Seç",
+    "search": "Ara",
+    "retry": "Tekrar dene",
+    "refresh": "Yenile",
+    "done": "Bitti",
+    "download": "İndir",
+    "delete": "Sil",
+    "clear": "Temizle",
+    "reset": "Sıfırla",
+    "confirm": "Onayla",
+    "open": "Aç",
+    "more": "Diğer",
+    "view": "Görüntüle",
+    "edit": "Düzenle",
+    "add": "Ekle",
+    "remove": "Kaldır"
+  },
+  "navigation": {
+    "home": "Ana sayfa",
+    "quran": "Kur’an",
+    "dhikr": "Zikir",
+    "duas": "Dualar",
+    "mosques": "Camiler",
+    "settings": "Ayarlar",
+    "about": "Hakkında",
+    "help": "Yardım ve destek",
+    "contact": "İletişim",
+    "dashboard": "Yönetim paneli"
+  },
+  "language": {
+    "title": "Dil",
+    "choose": "Dilinizi seçin",
+    "description": "Muslim Sync için bir dil seçin.",
+    "changeLater": "Bunu daha sonra Ayarlar’dan değiştirebilirsiniz.",
+    "savedOnDevice": "Seçiminiz bu cihaza kaydedilir.",
+    "recommended": "Önerilen",
+    "current": "Geçerli dil",
+    "saveError": "Dil seçiminiz kaydedilemedi. Lütfen tekrar deneyin.",
+    "contentIndependent": "Kur’an meali ve namaz vakitleri için konum ayrı ayrı seçilir.",
+    "switchLabel": "Dili değiştir",
+    "loading": "Diliniz hazırlanıyor…"
+  },
+  "prayers": {
+    "fajr": "Sabah",
+    "sunrise": "Güneş",
+    "dhuhr": "Öğle",
+    "asr": "İkindi",
+    "maghrib": "Akşam",
+    "isha": "Yatsı",
+    "jumuah": "Cuma",
+    "athan": "Ezan",
+    "iqama": "Kamet",
+    "nextPrayer": "Sıradaki namaz",
+    "today": "Bugün"
+  },
+  "status": {
+    "loading": "Yükleniyor…",
+    "error": "Bir hata oluştu",
+    "noResults": "Sonuç bulunamadı",
+    "offline": "Çevrimdışı",
+    "saving": "Kaydediliyor…",
+    "saved": "Kaydedildi",
+    "unknown": "Bilinmiyor"
+  },
+  "settings": {
+    "language": "Dil",
+    "theme": "Görünüm",
+    "location": "Konum",
+    "prayerCalculation": "Namaz vakti hesabı",
+    "about": "Muslim Sync hakkında",
+    "help": "Yardım ve destek"
+  },
+  "quran": {
+    "arabic": "Arapça",
+    "translation": "Çeviri",
+    "transliteration": "Harf çevirisi",
+    "reciter": "Kâri",
+    "translationUnavailable": "Seçtiğiniz dilde ({{language}}) çeviri bulunmuyor. Asıl metin gösteriliyor.",
+    "translationLanguage": "Çeviri dili: {{language}}",
+    "translationEdition": "Meal seçimi"
+  }
+}

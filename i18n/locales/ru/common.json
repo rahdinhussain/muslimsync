@@ -1,0 +1,89 @@
+{
+  "actions": {
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "close": "Закрыть",
+    "continue": "Продолжить",
+    "back": "Назад",
+    "select": "Выбрать",
+    "search": "Поиск",
+    "retry": "Попробовать снова",
+    "refresh": "Обновить",
+    "done": "Готово",
+    "download": "Скачать",
+    "delete": "Удалить",
+    "clear": "Очистить",
+    "reset": "Сбросить",
+    "confirm": "Подтвердить",
+    "open": "Открыть",
+    "more": "Ещё",
+    "view": "Посмотреть",
+    "edit": "Изменить",
+    "add": "Добавить",
+    "remove": "Убрать"
+  },
+  "navigation": {
+    "home": "Главная",
+    "quran": "Коран",
+    "dhikr": "Зикр",
+    "duas": "Дуа",
+    "mosques": "Мечети",
+    "settings": "Настройки",
+    "about": "О приложении",
+    "help": "Помощь и поддержка",
+    "contact": "Контакты",
+    "dashboard": "Панель управления"
+  },
+  "language": {
+    "title": "Язык",
+    "choose": "Выберите язык",
+    "description": "Выберите язык интерфейса Muslim Sync.",
+    "changeLater": "Язык можно изменить позже в настройках.",
+    "savedOnDevice": "Ваш выбор сохраняется на этом устройстве.",
+    "recommended": "Рекомендуемый язык",
+    "current": "Текущий язык",
+    "saveError": "Не удалось сохранить язык. Попробуйте ещё раз.",
+    "contentIndependent": "Перевод Корана и место для расчёта намаза выбираются отдельно.",
+    "switchLabel": "Сменить язык",
+    "loading": "Загружаем выбранный язык…"
+  },
+  "prayers": {
+    "fajr": "Фаджр",
+    "sunrise": "Восход",
+    "dhuhr": "Зухр",
+    "asr": "Аср",
+    "maghrib": "Магриб",
+    "isha": "Иша",
+    "jumuah": "Джума",
+    "athan": "Азан",
+    "iqama": "Икамат",
+    "nextPrayer": "Следующий намаз",
+    "today": "Сегодня"
+  },
+  "status": {
+    "loading": "Загрузка…",
+    "error": "Произошла ошибка",
+    "noResults": "Ничего не найдено",
+    "offline": "Без интернета",
+    "saving": "Сохранение…",
+    "saved": "Сохранено",
+    "unknown": "Неизвестно"
+  },
+  "settings": {
+    "language": "Язык",
+    "theme": "Оформление",
+    "location": "Местоположение",
+    "prayerCalculation": "Расчёт времени намаза",
+    "about": "О Muslim Sync",
+    "help": "Помощь и поддержка"
+  },
+  "quran": {
+    "arabic": "Арабский",
+    "translation": "Перевод",
+    "transliteration": "Транслитерация",
+    "reciter": "Чтец",
+    "translationUnavailable": "Перевод на выбранный язык ({{language}}) пока недоступен. Показан оригинал.",
+    "translationLanguage": "Язык перевода: {{language}}",
+    "translationEdition": "Издание перевода"
+  }
+}

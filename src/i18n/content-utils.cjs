@@ -1,4 +1,5 @@
-const SUPPORTED = new Set(['en', 'bn', 'ar', 'ur']);
+const { languages } = require('../../i18n/languages.json');
+const SUPPORTED = new Set(languages.map(({ code }) => code));
 const textPrefix = (locale) => {
   if (!SUPPORTED.has(locale)) throw new Error('Unsupported content locale');
   return `@dua_downloaded_text_v2_${locale}_`;

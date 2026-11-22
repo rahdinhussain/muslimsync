@@ -1,0 +1,89 @@
+{
+  "actions": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "close": "Tutup",
+    "continue": "Lanjutkan",
+    "back": "Kembali",
+    "select": "Pilih",
+    "search": "Cari",
+    "retry": "Coba lagi",
+    "refresh": "Muat ulang",
+    "done": "Selesai",
+    "download": "Unduh",
+    "delete": "Hapus",
+    "clear": "Bersihkan",
+    "reset": "Atur ulang",
+    "confirm": "Konfirmasi",
+    "open": "Buka",
+    "more": "Lainnya",
+    "view": "Lihat",
+    "edit": "Edit",
+    "add": "Tambah",
+    "remove": "Hapus"
+  },
+  "navigation": {
+    "home": "Beranda",
+    "quran": "Al-Qur’an",
+    "dhikr": "Zikir",
+    "duas": "Doa",
+    "mosques": "Masjid",
+    "settings": "Pengaturan",
+    "about": "Tentang",
+    "help": "Bantuan dan dukungan",
+    "contact": "Kontak",
+    "dashboard": "Dasbor"
+  },
+  "language": {
+    "title": "Bahasa",
+    "choose": "Pilih bahasa Anda",
+    "description": "Pilih bahasa untuk Muslim Sync.",
+    "changeLater": "Anda dapat mengubahnya nanti di Pengaturan.",
+    "savedOnDevice": "Pilihan Anda disimpan di perangkat ini.",
+    "recommended": "Disarankan",
+    "current": "Bahasa saat ini",
+    "saveError": "Pilihan bahasa tidak dapat disimpan. Coba lagi.",
+    "contentIndependent": "Terjemahan Al-Qur’an dan lokasi salat memiliki pengaturan tersendiri.",
+    "switchLabel": "Ubah bahasa",
+    "loading": "Menyiapkan bahasa Anda…"
+  },
+  "prayers": {
+    "fajr": "Subuh",
+    "sunrise": "Terbit matahari",
+    "dhuhr": "Zuhur",
+    "asr": "Asar",
+    "maghrib": "Magrib",
+    "isha": "Isya",
+    "jumuah": "Jumat",
+    "athan": "Azan",
+    "iqama": "Ikamah",
+    "nextPrayer": "Salat berikutnya",
+    "today": "Hari ini"
+  },
+  "status": {
+    "loading": "Memuat…",
+    "error": "Terjadi kesalahan",
+    "noResults": "Tidak ada hasil",
+    "offline": "Luring",
+    "saving": "Menyimpan…",
+    "saved": "Tersimpan",
+    "unknown": "Tidak diketahui"
+  },
+  "settings": {
+    "language": "Bahasa",
+    "theme": "Tampilan",
+    "location": "Lokasi",
+    "prayerCalculation": "Perhitungan waktu salat",
+    "about": "Tentang Muslim Sync",
+    "help": "Bantuan dan dukungan"
+  },
+  "quran": {
+    "arabic": "Bahasa Arab",
+    "translation": "Terjemahan",
+    "transliteration": "Transliterasi",
+    "reciter": "Qari",
+    "translationUnavailable": "Terjemahan dalam bahasa {{language}} belum tersedia. Teks asli ditampilkan.",
+    "translationLanguage": "Bahasa terjemahan: {{language}}",
+    "translationEdition": "Edisi terjemahan"
+  }
+}

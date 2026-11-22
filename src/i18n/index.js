@@ -5,15 +5,27 @@ import '@formatjs/intl-pluralrules/locale-data/en.js';
 import '@formatjs/intl-pluralrules/locale-data/bn.js';
 import '@formatjs/intl-pluralrules/locale-data/ar.js';
 import '@formatjs/intl-pluralrules/locale-data/ur.js';
+import '@formatjs/intl-pluralrules/locale-data/hi.js';
+import '@formatjs/intl-pluralrules/locale-data/id.js';
+import '@formatjs/intl-pluralrules/locale-data/ru.js';
+import '@formatjs/intl-pluralrules/locale-data/tr.js';
 import registry from '../../i18n/languages.json';
 import enCommon from '../../i18n/locales/en/common.json';
 import bnCommon from '../../i18n/locales/bn/common.json';
 import arCommon from '../../i18n/locales/ar/common.json';
 import urCommon from '../../i18n/locales/ur/common.json';
+import hiCommon from '../../i18n/locales/hi/common.json';
+import idCommon from '../../i18n/locales/id/common.json';
+import ruCommon from '../../i18n/locales/ru/common.json';
+import trCommon from '../../i18n/locales/tr/common.json';
 import enMobile from '../../i18n/locales/en/mobile.json';
 import bnMobile from '../../i18n/locales/bn/mobile.json';
 import arMobile from '../../i18n/locales/ar/mobile.json';
 import urMobile from '../../i18n/locales/ur/mobile.json';
+import hiMobile from '../../i18n/locales/hi/mobile.json';
+import idMobile from '../../i18n/locales/id/mobile.json';
+import ruMobile from '../../i18n/locales/ru/mobile.json';
+import trMobile from '../../i18n/locales/tr/mobile.json';
 
 export const LANGUAGES = registry.languages;
 export const DEFAULT_LOCALE = registry.defaultLocale;
@@ -33,6 +45,10 @@ i18next.use(initReactI18next).init({
     bn: { common: bnCommon, mobile: bnMobile },
     ar: { common: arCommon, mobile: arMobile },
     ur: { common: urCommon, mobile: urMobile },
+    hi: { common: hiCommon, mobile: hiMobile },
+    id: { common: idCommon, mobile: idMobile },
+    ru: { common: ruCommon, mobile: ruMobile },
+    tr: { common: trCommon, mobile: trMobile },
   },
   lng: DEFAULT_LOCALE,
   fallbackLng: DEFAULT_LOCALE,

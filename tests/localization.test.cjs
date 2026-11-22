@@ -209,3 +209,35 @@ test('visible numeric interpolation, dates and times use the selected locale', a
   assert.ok(locale.formatDate(new Date(2026, 10, 13), { year: 'numeric', month: 'long', day: 'numeric' }).includes('২০২৬'));
   await app.unmount();
 });
+
+test('each new language works on first launch, after a restart, and for offline content', async () => {
+  const options = {
+    hi: ['hi-IN', 'सेटिंग्स', 'hi.hindi'],
+    id: ['id-ID', 'Pengaturan', 'id.indonesian'],
+    ru: ['ru-RU', 'Настройки', 'ru.kuliev'],
+    tr: ['tr-TR', 'Ayarlar', 'tr.diyanet'],
+  };
+  const config = require('../app.json').expo;
+  const nativeLocales = config.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === 'expo-localization')[1].supportedLocales;
+  for (const [locale, [region, settings, edition]] of Object.entries(options)) {
+    const f = fixture({}, region);
+    const app = await mountLocale(f);
+    assert.equal(app.state().locale, locale);
+    assert.equal(app.state().needsChoice, true);
+    assert.equal(f.i18n.t('navigation.settings', { ns: 'common' }), settings);
+    assert.notEqual(f.i18n.t('directory.choose'), 'Choose your home country to see local mosques.');
+    await act(async () => app.state().chooseLanguage(locale));
+    const quran = f.load(root + '/src/utils/quranStorage.js');
+    assert.equal(await quran.getSelectedTranslation(), edition);
+    assert.ok(quran.TRANSLATIONS.some(t => t.id === edition));
+    assert.ok(config.ios.infoPlist.CFBundleLocalizations.includes(locale));
+    assert.ok(nativeLocales.android.includes(locale) && nativeLocales.ios.includes(locale));
+    assert.ok(require('..' + config.locales[locale].slice(1)).ios.NSLocationWhenInUseUsageDescription);
+    assert.notEqual(duaTextKey('1', locale), duaTextKey('1', 'en'));
+    await app.unmount();
+    const restarted = await mountLocale(fixture(Object.fromEntries(f.storage), 'en-CA'));
+    assert.equal(restarted.state().locale, locale);
+    assert.equal(restarted.state().needsChoice, false);
+    await restarted.unmount();
+  }
+});

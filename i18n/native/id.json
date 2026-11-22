@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "Arah kiblat dihitung di perangkat menggunakan lokasi Anda. Jika Anda memilih lokasi perangkat untuk waktu salat, koordinat perkiraan dikirim ke AlAdhan.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "Arah kiblat dihitung di perangkat menggunakan lokasi Anda. Jika Anda memilih lokasi perangkat untuk waktu salat, koordinat perkiraan dikirim ke AlAdhan."
+  }
+}
