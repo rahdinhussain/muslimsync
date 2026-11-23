@@ -5,7 +5,13 @@ import schedule from './prayerSchedule.cjs';
 
 const METHOD = '@prayer_method_v2';
 const PLACE = '@prayer_place_v2';
-export const CACHE = '@prayer_window_v2';
+export const CACHE = '@prayer_window_v3';
+export const MADHHABS = ['shafii','hanafi','maliki','hanbali'];
+export async function readMadhhab() {
+  const value = await AsyncStorage.getItem('@prayer_madhhab');
+  return MADHHABS.includes(value) ? value : 'shafii';
+}
+export const writeMadhhab = value => AsyncStorage.setItem('@prayer_madhhab', value);
 
 export async function readMethod() {
   const [current, old] = await AsyncStorage.multiGet([METHOD, '@prayer_calculation_method']);
@@ -31,9 +37,9 @@ export async function currentPrayerPlace() {
   // Keep the last chosen area available offline; do not silently change cities.
   const permission = await Location.getForegroundPermissionsAsync();
   if (permission.status !== 'granted') { await clearLocationCache(); return null; }
-  if (Date.now() - saved.updated < 3600000) return saved;
+  if (Date.now() - saved.updated < 300000) return saved;
   try { const fresh = await locatePrayerPlace(); await savePlace(fresh); return fresh; } catch { return { ...saved, lastKnown: true }; }
 }
-export function placeKey(place, method) {
-  return JSON.stringify([method, place.city?.toLowerCase() || '', place.country?.toLowerCase() || '', place.latitude ?? null, place.longitude ?? null]);
+export function placeKey(place, method, madhhab) {
+  return JSON.stringify(['windows-v3', method, madhhab, place.city?.toLowerCase() || '', place.country?.toLowerCase() || '', place.latitude ?? null, place.longitude ?? null]);
 }

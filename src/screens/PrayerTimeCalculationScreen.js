@@ -6,7 +6,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
-import { readMethod, writeMethod } from '../utils/prayerPreferences';
+import { readMethod, writeMethod, readMadhhab, writeMadhhab, MADHHABS } from '../utils/prayerPreferences';
 import { tr, formatNumber } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
@@ -20,6 +20,7 @@ export default function PrayerTimeCalculationScreen() {
   const { locale, isRTL } = useAppLocale();
 
 const PRAYER_METHODS = [
+  { id: -1, name: tr('general.auto') },
   { id: 0, name: tr("prayerTimeCalculation.shiaIthnaAnsari"), fajr: '16.0°', isha: '14.0°' },
   { id: 1, name: tr("prayerTimeCalculation.universityOfIslamicSciencesKarachi"), fajr: '18.0°', isha: '18.0°' },
   { id: 2, name: tr("prayerTimeCalculation.islamicSocietyOfNorthAmericaIsna"), fajr: '15.0°', isha: '15.0°' },
@@ -40,10 +41,12 @@ const PRAYER_METHODS = [
 
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const [selectedMethod, setSelectedMethod] = useState(2); // Default: ISNA (method 2)
+  const [selectedMethod, setSelectedMethod] = useState(-1);
+  const [school, setSchool] = useState('shafii');
 
   useEffect(() => {
     loadPrayerMethod();
+    readMadhhab().then(setSchool).catch(()=>{});
   }, []);
 
   const loadPrayerMethod = async () => {
@@ -145,6 +148,16 @@ const PRAYER_METHODS = [
         </View>
 
         <ScrollView style={dynamicStyles.content} showsVerticalScrollIndicator={true}>
+          <Text style={dynamicStyles.optionTitle}>{tr('general.school')}</Text>
+          {MADHHABS.map(name=><TouchableOpacity key={name} accessibilityRole="radio" accessibilityState={{checked:school===name}}
+            style={dynamicStyles.optionCard} onPress={async()=>{
+              try {await writeMadhhab(name); setSchool(name);}
+              catch {Alert.alert(tr('status.error',{ns:'common'}));}
+            }}>
+            <Text style={[dynamicStyles.optionTitle,dynamicStyles.optionContent]}>{tr('general.'+name)}</Text>
+            <Ionicons name={school===name?'radio-button-on':'radio-button-off'} size={24} color={colors.text}/>
+          </TouchableOpacity>)}
+          <Text style={dynamicStyles.optionTitle}>{tr('settings.prayerCalculation',{ns:'common'})}</Text>
           {PRAYER_METHODS.map((method) => (
             <TouchableOpacity
               key={method.id}

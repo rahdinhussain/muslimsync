@@ -58,20 +58,37 @@ export async function saveMosqueMonth(country,id,day) {
   await AsyncStorage.setItem(calendarKey(country+'/'+id,day),JSON.stringify(days));
   return days;
 }
-export async function savePrayerMonth(place,method,placeKey,day) {
+export async function savePrayerMonth(place,method,placeKey,day,madhhab) {
   const [start,end]=monthRange(day);
-  const url=schedule.urlFor(place,method,start).replace(/timings(ByCity)?\/[^?]+/,(_match,byCity)=>
+  const url=schedule.urlFor(place,method,start,madhhab).replace(/timings(ByCity)?\/[^?]+/,(_match,byCity)=>
     'calendar'+(byCity||'')+'/'+Number(day.slice(0,4))+'/'+Number(day.slice(5,7)));
   const response=await fetch(url);
   if(!response.ok)throw Error('Calendar unavailable');
   const json=await response.json();
   if(json.code!==200||!Array.isArray(json.data)||json.data.length!==Number(end.slice(8)))throw Error('Incomplete calendar');
   const days={};
+  let referenceMonth;
   for(const row of json.data){
     const key=row.date.gregorian.date.split('-').reverse().join('-');
     if(key<start||key>end||days[key])throw Error('Invalid calendar');
-    days[key]=schedule.parseDay({code:200,data:row},key,method);
+    try { days[key]=schedule.parseDay({code:200,data:row},key,method,madhhab); }
+    catch(error) {
+      const reference=schedule.polarReference(row);
+      if(!reference) throw error;
+      const convention=method===-1?Number(row.meta.method.id):method;
+      if(!referenceMonth) {
+        const address=schedule.urlFor(reference,convention,start,madhhab)
+          .replace(/timings\/[^?]+/,'calendar/'+Number(day.slice(0,4))+'/'+Number(day.slice(5,7)));
+        const result=await fetch(address);
+        if(!result.ok) throw error;
+        referenceMonth=(await result.json()).data;
+      }
+      const ref=referenceMonth?.[Number(key.slice(-2))-1];
+      days[key]={...schedule.parseDay({code:200,data:ref},key,convention,madhhab),polar:true};
+    }
   }
+  const following=schedule.offsetDay(end,1);
+  days[following]=await schedule.fetchDay(place,method,following,madhhab);
   await AsyncStorage.setItem(calendarKey(placeKey,day),JSON.stringify(days));
   return days;
 }

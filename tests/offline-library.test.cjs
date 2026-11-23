@@ -79,16 +79,23 @@ test('a saved full prayer month can be reopened locally by place and method',asy
     'expo-file-system/legacy':{documentDirectory:'file:///data/'},'../lib/supabase':{supabase:{}},'./prayerSchedule.cjs':require('../src/utils/prayerSchedule.cjs')});
   const saved=global.fetch;t.after(()=>{global.fetch=saved;});
   let requests=0;
-  global.fetch=async url=>{requests++;assert.match(url,/calendarByCity\/2028\/2\?city=Dhaka/);
-    return {ok:true,json:async()=>({code:200,data:Array.from({length:29},(_,i)=>{
-      const dd=String(i+1).padStart(2,'0'),day='2028-02-'+dd;
-      const names=['Fajr','Sunrise','Dhuhr','Asr','Maghrib','Isha'];
-      return {date:{gregorian:{date:dd+'-02-2028'}},meta:{timezone:'Asia/Dhaka',method:{id:2}},
-        timings:Object.fromEntries(names.map((k,i)=>[k,day+'T'+String(i+5).padStart(2,'0')+':15:00+06:00']))};
-    })})};};
-  await m.savePrayerMonth({city:'Dhaka',country:'BD'},2,'Dhaka/2','2028-02-11');
-  const offline=await m.readMonth('Dhaka/2','2028-02-29');assert.equal(offline['2028-02-29'].prayers.Fajr.wall,'05:15');
-  assert.equal(await m.readMonth('Vancouver/2','2028-02-29'),null);assert.equal(requests,1);
+  const row=day=>({
+    date:{gregorian:{date:day.split('-').reverse().join('-')}},
+    meta:{timezone:'Asia/Dhaka',method:{id:2},school:'HANAFI'},
+    timings:Object.fromEntries(Object.entries({Fajr:'05:15',Sunrise:'06:25',Dhuhr:'12:10',Asr:'16:20',Sunset:'18:02',Maghrib:'18:02',Isha:'19:15'})
+      .map(([name,wall])=>[name,day+'T'+wall+':00+06:00']))
+  });
+  global.fetch=async url=>{
+    requests++;
+    assert.equal(new URL(url).searchParams.get('school'),'1');
+    const data=url.includes('calendarByCity/2028/2') ? Array.from({length:29},(_,i)=>row('2028-02-'+String(i+1).padStart(2,'0'))) : row('2028-03-01');
+    return {ok:true,json:async()=>({code:200,data})};
+  };
+  await m.savePrayerMonth({city:'Dhaka',country:'BD'},2,'Dhaka/2/hanafi','2028-02-11','hanafi');
+  const offline=await m.readMonth('Dhaka/2/hanafi','2028-02-29');
+  assert.equal(offline['2028-03-01'].prayers.Fajr.wall,'05:15');
+  assert.equal(await m.readMonth('Dhaka/2/maliki','2028-02-29'),null);
+  assert.equal(requests,2);
 });
 test('full multilingual editions keep chapter bodies on disk and settings small',async()=>{
   const files=new Map(),values=new Map(),storage={getItem:async k=>values.get(k)||null,setItem:async(k,v)=>{

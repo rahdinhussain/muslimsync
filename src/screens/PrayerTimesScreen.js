@@ -1,13 +1,13 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, AppState, Dimensions, Animated } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, AppState, Dimensions, Animated } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CACHE, currentPrayerPlace, placeKey, readMethod } from '../utils/prayerPreferences';
+import { CACHE, currentPrayerPlace, locatePrayerPlace, savePlace, placeKey, readMethod, readMadhhab } from '../utils/prayerPreferences';
 import {OfflineButton} from '../components/OfflineButton';
 import {readMonth,savePrayerMonth} from '../utils/offlineContent';
 import schedule from '../utils/prayerSchedule.cjs';
@@ -29,11 +29,13 @@ export default function PrayerTimesScreen() {
   const [now, setNow] = useState(Date.now());
   const [windowData, setWindowData] = useState(null);
   const [savedMonth,setSavedMonth]=useState('');
+  const [locating,setLocating] = useState(false);
   const [pending, setPending] = useState(true);
   const glowAnim = useRef(new Animated.Value(0)).current;
   const place = settings?.place;
   const method = settings?.method;
-  const key = place ? placeKey(place, method) : null;
+  const madhhab = settings?.madhhab;
+  const key = place ? placeKey(place, method, madhhab) : null;
   const matching = key && windowData?.key === key ? windowData : null;
   const today = schedule.dayKey(new Date(now), matching?.zone);
   const day = chosenDay || today;
@@ -41,7 +43,11 @@ export default function PrayerTimesScreen() {
   const selectedDate = new Date(day + 'T12:00:00');
   const entry = matching?.days[day];
   const validDay = entry?.date === day ? entry : null;
-  const active = day === today ? schedule.activePrayers(validDay, matching?.days[tomorrow], now) : {};
+  const ranges = schedule.windows(validDay, matching?.days[tomorrow]);
+  const night = schedule.nightMarkers(validDay, matching?.days[tomorrow]);
+  const periods = validDay ? schedule.solarPeriods(validDay) : {};
+  const clock = t => schedule.clock(t, validDay, locale);
+  const active = day === today ? schedule.activePrayers(validDay, matching?.days[tomorrow], now, matching?.days[schedule.offsetDay(day,-1)]) : {};
   const nextPrayer = active.next;
   const cityName = place?.label;
   const refresh = () => setRevision(value => value + 1);
@@ -50,8 +56,8 @@ export default function PrayerTimesScreen() {
   useEffect(() => {
     if (!focused) return;
     let active = true;
-    Promise.all([currentPrayerPlace(), readMethod()]).then(([place, method]) => {
-      if (active) setSettings({ place, method });
+    Promise.all([currentPrayerPlace(), readMethod(), readMadhhab()]).then(([place, method, madhhab]) => {
+      if (active) setSettings({ place, method, madhhab });
     }).catch(() => { if (active) setSettings({ place: null }); });
     return () => { active = false; };
   }, [focused, revision]);
@@ -94,14 +100,15 @@ export default function PrayerTimesScreen() {
       if(!active)return;
       setSavedMonth(pinned?key+day.slice(0,7):'');
       if(pinned?.[day])days[day]=pinned[day];
+      if(pinned?.[tomorrow])days[tomorrow]=pinned[tomorrow];
       if(nextMonth?.[tomorrow])days[tomorrow]=nextMonth[tomorrow];
       publish(true);
-      const results = await Promise.all([day, tomorrow].map(async date => {
+      const results = await Promise.all([day, tomorrow, schedule.offsetDay(day,-1)].map(async date => {
         try {
-          if((date===day?pinned:nextMonth)?.[date] || days[date]?.date===date) return true;
-          const response = await fetch(schedule.urlFor(place, method, date), { signal: controller.signal });
-          if (!response.ok) return false;
-          days[date] = schedule.parseDay(await response.json(), date, method);
+          const saved = pinned?.[date] || nextMonth?.[date];
+          if (saved) days[date] = saved;
+          if (days[date]?.date === date) return true;
+          days[date] = await schedule.fetchDay(place, method, date, madhhab, controller.signal);
           return true;
         } catch { return false; }
       }));
@@ -483,11 +490,21 @@ export default function PrayerTimesScreen() {
       {(!validDay || matching?.offline || place?.lastKnown) && <View style={dynamicStyles.prayerCard}>
         <Text style={{ color: colors.text, flexShrink: 1 }}>{tr(!place ? 'prayerTimes.chooseArea' : validDay ? 'prayerTimes.savedSchedule' : pending ? 'mosqueSchedule.loadingPrayerTimes' : 'prayerTimes.noVerifiedTimes')}</Text>
       </View>}
+      <TouchableOpacity disabled={locating} style={dynamicStyles.refreshButton} onPress={async()=>{
+        setLocating(true);
+        try { const current=await locatePrayerPlace(); await savePlace(current); setChosenDay(null); refresh(); }
+        catch { Alert.alert(tr('general.error')); }
+        finally { setLocating(false); }
+      }}><Text style={dynamicStyles.refreshButtonText}>{tr('general.gps')}</Text></TouchableOpacity>
       <TouchableOpacity onPress={openLocation} style={dynamicStyles.refreshButton}>
         <Text style={dynamicStyles.refreshButtonText}>{tr('settings.location', { ns: 'common' })}</Text>
       </TouchableOpacity>
+      <TouchableOpacity style={dynamicStyles.refreshButton} onPress={() => navigation.navigate('Settings', {screen:'PrayerTimeCalculation'})}>
+        <Text style={dynamicStyles.refreshButtonText}>{tr('general.school')} · {tr('general.'+(madhhab || 'shafii'))}</Text>
+      </TouchableOpacity>
+      {validDay && <Text style={[dynamicStyles.featureDescription,{paddingHorizontal:16}]}>{validDay.zone} · {validDay.method}{'\n'}{tr('general.range')}{validDay.polar ? '\n'+tr('general.polar') : ''}</Text>}
       {place && <OfflineButton saved={savedMonth===key+day.slice(0,7)} label={savedMonth===key+day.slice(0,7)?'library.updateMonth':'library.saveMonth'}
-        onSave={async()=>{await savePrayerMonth(place,method,key,day);refresh();}}/>}
+        onSave={async()=>{await savePrayerMonth(place,method,key,day,madhhab);refresh();}}/>}
       <View style={styles.prayerTimesContainer}>
         {Object.entries(prayerNames).map(([key, prayer]) => (
           <Animated.View 
@@ -503,7 +520,7 @@ export default function PrayerTimesScreen() {
             <View style={styles.prayerInfo}>
               <Text style={dynamicStyles.prayerName}>{prayerLabel(prayer.name)}</Text>
               <Text style={dynamicStyles.prayerTime}>
-                {formatPrayerTime(validDay?.prayers[key]?.wall)}
+                {clock(ranges[key]?.start)} – {clock(ranges[key]?.end)}
               </Text>
             </View>
           </Animated.View>
@@ -518,6 +535,16 @@ export default function PrayerTimesScreen() {
         <Text style={dynamicStyles.refreshButtonText}>{tr("prayerTimes.refreshTimes")}</Text>
       </TouchableOpacity>
 
+      {validDay && <View style={styles.quickActionsContainer}>
+        {Object.entries(night).map(([label,time])=><Text key={label} style={dynamicStyles.featureDescription}>{tr('general.'+label)} · {clock(time)}</Text>)}
+        {madhhab==='maliki' && <Text style={dynamicStyles.featureDescription}>{tr('general.malikiNote')}</Text>}
+        <Text style={dynamicStyles.sectionTitle}>{tr('general.restricted')}</Text>
+        {['sunrise','zenith','sunset'].map(name=><View key={name} style={dynamicStyles.prayerCard}>
+          <View style={styles.prayerInfo}><Text style={dynamicStyles.prayerName}>{tr('general.'+name)}</Text>
+          <Text style={dynamicStyles.prayerTime}>{periods[name] ? periods[name].map(clock).join(' – ') : '—'}</Text></View>
+        </View>)}
+        <Text style={dynamicStyles.featureDescription}>{tr('general.guidance')}</Text>
+      </View>}
       <View style={styles.quickActionsContainer}>
         <Text style={dynamicStyles.sectionTitle}>{tr("prayerTimes.quickActions")}</Text>
         <View style={styles.quickActionsGrid}>

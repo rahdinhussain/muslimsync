@@ -6,8 +6,8 @@ const place = {latitude:49.28,longitude:-123.12};
 const key = '2026-11-18';
 const prayers=['Fajr','Dhuhr','Asr','Maghrib','Isha'];
 function response(date, hours) {
-  return {code:200,data:{date:{gregorian:{date:date.split('-').reverse().join('-')}},meta:{method:{id:2},timezone:'America/Vancouver'},
-    timings:Object.fromEntries(prayers.map((p,i)=>[p,date+'T'+hours[i]+':00-07:00']))}};
+  return {code:200,data:{date:{gregorian:{date:date.split('-').reverse().join('-')}},meta:{method:{id:2},latitude:49.28,school:'STANDARD',timezone:'America/Vancouver'},
+    timings:{Sunrise:date+'T07:30:00-08:00', Sunset:date+'T17:24:00-08:00', ...Object.fromEntries(prayers.map((p,i)=>[p,date+'T'+hours[i]+':00-08:00']))}}};
 }
 test('prayer requests encode the provider date, method and deliberate area selection',()=>{
   assert.match(urlFor(place,2,key),/timings\/18-11-2026\?/);
@@ -45,4 +45,26 @@ test('cancelled chapter loads stop before trying another provider',async()=>{
   await assert.rejects(fetchChapter({number:1,ayahs:7},'en.sahih',controller.signal,async()=>{
     calls++;controller.abort();throw Error('cancelled');}));
   assert.equal(calls,1);
+});
+
+test('madhhab, sunrise gap, solar restrictions and overnight end',()=>{
+  const schedule=require('../src/utils/prayerSchedule.cjs');
+  assert.equal(new URL(urlFor(place,-1,key,'hanafi')).searchParams.get('school'),'1');
+  assert.equal(new URL(urlFor(place,-1,key,'maliki')).searchParams.has('method'),false);
+  const values=['06:55','12:58','15:06','17:24','18:58'];
+  const date=offsetDay(key,1), raw=response(key,values);
+  assert.throws(()=>parseDay(raw,key,2,'hanafi'));
+  const day=parseDay(raw,key,2,'hanbali');
+  const next=parseDay(response(date,values),date,2);
+  const windows=schedule.windows(day,next), periods=schedule.solarPeriods(day);
+  assert.equal(windows.Fajr.end,day.prayers.Sunrise.time);
+  assert.equal(windows.Isha.end,next.prayers.Fajr.time);
+  assert.equal(schedule.windows(day,null).Isha.end,null);
+  assert.equal(activePrayers(day,next,windows.Fajr.end).current,null);
+  assert.equal(activePrayers(day,next,windows.Asr.start).current,'Asr');
+  assert.equal(activePrayers(next,null,Date.parse(date+'T01:00:00-08:00'),day).current,'Isha');
+  assert.equal(periods.sunrise[0],windows.Fajr.end);
+  assert.equal(periods.sunset[1],day.prayers.Sunset.time);
+  assert.ok(periods.sunrise[1]<periods.zenith[0] && periods.zenith[1]<periods.sunset[0]);
+  assert.deepEqual(schedule.solarPeriods({...day,polar:true}),{});
 });
