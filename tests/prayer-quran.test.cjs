@@ -68,3 +68,26 @@ test('madhhab, sunrise gap, solar restrictions and overnight end',()=>{
   assert.ok(periods.sunrise[1]<periods.zenith[0] && periods.zenith[1]<periods.sunset[0]);
   assert.deepEqual(schedule.solarPeriods({...day,polar:true}),{});
 });
+
+test('post-midnight sunset and Isha retain their civil day and remain active on the following morning',()=>{
+  const s=require('../src/utils/prayerSchedule.cjs'), date='2026-06-21';
+  function reyk(day){
+    const raw=response(day,['02:04','13:30','18:15','00:04','00:53']);
+    raw.data.meta.timezone='Atlantic/Reykjavik'; raw.data.meta.latitude=64.15;
+    for(const key of Object.keys(raw.data.timings))raw.data.timings[key]=raw.data.timings[key].replace('-08:00','+00:00');
+    raw.data.timings.Sunrise=day+'T02:55:00+00:00';raw.data.timings.Sunset=raw.data.timings.Maghrib;
+    return s.parseDay(raw,day,2,'shafii');
+  }
+  const day=reyk(date), next=reyk('2026-06-22');
+  assert.equal(new Date(day.prayers.Isha.time).toISOString(),'2026-06-22T00:53:00.000Z');
+  assert.match(s.clock(day.prayers.Maghrib.time,day,'en',next),/\(\+1\)/);
+  assert.equal(s.activePrayers(next,null,Date.parse('2026-06-22T00:20Z'),day).current,'Maghrib');
+  assert.equal(s.activePrayers(next,null,Date.parse('2026-06-22T00:20Z'),day).next.name,'Isha');
+  assert.ok(s.nightMarkers(day,next).midnight<next.prayers.Fajr.time);
+});
+test('provider wall time survives a disagreement with installed time-zone rules',()=>{
+  const raw=response(key,['06:55','12:58','15:06','17:24','18:58']);
+  raw.data.meta.timezone='Etc/UTC';
+  const day=parseDay(raw,key,2);
+  assert.match(require('../src/utils/prayerSchedule.cjs').clock(day.prayers.Asr.time,day,'en-GB'),/15:06/);
+});

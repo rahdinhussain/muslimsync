@@ -37,7 +37,7 @@ export default function PrayerTimesScreen() {
   const madhhab = settings?.madhhab;
   const key = place ? placeKey(place, method, madhhab) : null;
   const matching = key && windowData?.key === key ? windowData : null;
-  const today = schedule.dayKey(new Date(now), matching?.zone);
+  const today = schedule.dateAt(now, matching && Object.values(matching.days)[0]);
   const day = chosenDay || today;
   const tomorrow = schedule.offsetDay(day, 1);
   const selectedDate = new Date(day + 'T12:00:00');
@@ -46,7 +46,7 @@ export default function PrayerTimesScreen() {
   const ranges = schedule.windows(validDay, matching?.days[tomorrow]);
   const night = schedule.nightMarkers(validDay, matching?.days[tomorrow]);
   const periods = validDay ? schedule.solarPeriods(validDay) : {};
-  const clock = t => schedule.clock(t, validDay, locale);
+  const clock = t => schedule.clock(t, validDay, locale, matching?.days[tomorrow]);
   const active = day === today ? schedule.activePrayers(validDay, matching?.days[tomorrow], now, matching?.days[schedule.offsetDay(day,-1)]) : {};
   const nextPrayer = active.next;
   const cityName = place?.label;

@@ -30,6 +30,22 @@ function urlFor(place, method, key, madhhab = 'shafii') {
 
 
 // Keep instants (including their UTC offset) through DST changes and midnight.
+function zoneOffset(time, zone) {
+  const parts = new Intl.DateTimeFormat('en-GB', {timeZone:zone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(new Date(time));
+  const fields = Object.fromEntries(parts.map(p => [p.type, Number(p.value)]));
+  const wall = Date.UTC(fields.year, fields.month-1, fields.day, fields.hour, fields.minute);
+  return wall - Math.floor(time/60000)*60000;
+}
+
+// Some provider timetables attach the requested date to every wall time.
+// Move a midnight crossing by a civil day, preserving DST and provider offsets.
+function moveDay(event, days, zone) {
+  const rough = event.time + days*86400000;
+  const change = zoneOffset(rough,zone) - zoneOffset(event.time,zone);
+  event.time = rough - change;
+  event.offset += change;
+}
+
 function parseDay(response, key, method, madhhab) {
   const data = response?.data;
   const meta = data?.meta;
@@ -45,9 +61,17 @@ function parseDay(response, key, method, madhhab) {
     if (typeof iso !== 'string' || !/(Z|[+-]\d\d:\d\d)$/.test(iso)) continue;
     const time = Date.parse(iso);
     if (!Number.isFinite(time)) continue;
-    const localDay = dayKey(new Date(time), zone);
-    if (localDay !== key && !(name === 'Isha' && localDay === offsetDay(key, 1))) continue;
-    prayers[name] = { time, wall: iso.slice(11,16) };
+    const localDay = iso.slice(0,10);
+    if (localDay !== key && !(['Sunset','Maghrib','Isha'].includes(name) && localDay === offsetDay(key, 1)) && !(name === 'Fajr' && localDay === offsetDay(key,-1))) continue;
+    prayers[name] = { time, wall: iso.slice(11,16), offset: Date.parse(iso.slice(0,19)+'Z')-time };
+  }
+  const {Fajr,Sunrise,Asr} = prayers;
+  if (Fajr && Sunrise && Fajr.time > Sunrise.time && Fajr.wall >= '18:00') moveDay(Fajr,-1,zone);
+  for (const name of ['Sunset','Maghrib','Isha']) {
+    const event = prayers[name];
+    const previous = name === 'Isha' ? prayers.Maghrib : Asr;
+    if (event && previous && event.time < previous.time && event.wall < '06:00' &&
+        data.timings[name].startsWith(key+'T')) moveDay(event,1,zone);
   }
   if (NAMES.some(name => !prayers[name]) ||
       NAMES.some((name, i) => i > 0 && prayers[name].time <= prayers[NAMES[i-1]].time)) {
@@ -121,12 +145,12 @@ function windows(day, tomorrow) {
 
 function activePrayers(today, tomorrow, now, yesterday) {
   if (!today) return {};
-  const sequence = NAMES.map(name => ({ name, ...today.prayers[name] }));
-  const previous = yesterday ? windows(yesterday, today).Isha : null;
-  const current = Object.entries(windows(today, tomorrow)).find(([,p]) => p.start <= now && now < p.end)?.[0];
+  const adjacent = [yesterday,today,tomorrow].filter(Boolean);
+  const sequence = adjacent.flatMap(day => NAMES.map(name => ({name,...day.prayers[name]}))).sort((a,b)=>a.time-b.time);
+  const spans = [...Object.entries(windows(yesterday,today)),...Object.entries(windows(today,tomorrow))];
   return {
-    current: current || (previous && previous.start <= now && now < previous.end ? 'Isha' : null),
-    next: sequence.find(p => p.time > now) || (tomorrow ? { name: 'Fajr', ...tomorrow.prayers.Fajr } : null),
+    current: spans.find(([,p])=>p.start<=now && now<p.end)?.[0] || null,
+    next: sequence.find(p=>p.time>now) || null
   };
 }
 
@@ -136,11 +160,26 @@ function nightMarkers(day, next) {
   return {third:dusk+(dawn-dusk)/3, midnight:dusk+(dawn-dusk)/2};
 }
 
-function clock(time, day, locale) {
-  if (!Number.isFinite(time)) return '—';
-  const date = new Date(time);
-  const clock = new Intl.DateTimeFormat(locale, {timeZone:day.zone,hour:'numeric',minute:'2-digit'}).format(date);
-  return dayKey(date,day.zone) !== day.date ? clock + ' (+1)' : clock;
+function localStamp(time, day, next) {
+  // An older phone can have outdated time-zone rules. Anchor the clock to the
+  // provider's UTC offset and apply the zone's DST change between events.
+  const events=[...Object.values(day.prayers),...Object.values(next?.prayers || {})];
+  const anchor=events.reduce((best,e)=>Math.abs(e.time-time)<Math.abs(best.time-time)?e:best);
+  const offset=(anchor.offset ?? zoneOffset(anchor.time,day.zone)) + (anchor.time===time ? 0 : zoneOffset(time,day.zone)-zoneOffset(anchor.time,day.zone));
+  return new Date(time+offset);
 }
 
-module.exports = { NAMES, dayKey, offsetDay, migrateMethod, urlFor, parseDay, activePrayers, windows, solarPeriods, clock, nightMarkers, fetchDay, polarReference };
+function dateAt(time, day) {
+  return day ? localStamp(time,day).toISOString().slice(0,10) : dayKey(new Date(time));
+}
+
+function clock(time, day, locale, next) {
+  if (!Number.isFinite(time)) return '—';
+  const local=localStamp(time,day,next);
+  const wall=new Intl.DateTimeFormat(locale,{timeZone:'UTC',hour:'numeric',minute:'2-digit'}).format(local);
+  const date=local.toISOString().slice(0,10);
+  return wall + (date>day.date ? ' (+1)' : date<day.date ? ' (−1)' : '');
+}
+
+
+module.exports = { NAMES, dayKey, dateAt, offsetDay, migrateMethod, urlFor, parseDay, activePrayers, windows, solarPeriods, clock, nightMarkers, fetchDay, polarReference };
