@@ -52,6 +52,8 @@ function HomeStack() {
         name="Qibla" 
         component={QiblaScreen}
       />
+      <Stack.Screen name="Location" component={LocationSettingsScreen} />
+      <Stack.Screen name="PrayerTimeCalculation" component={PrayerTimeCalculationScreen} />
     </Stack.Navigator>
   );
 }
@@ -83,7 +85,7 @@ function MosqueStack() {
 function SettingsStack() {
   const { isRTL } = useAppLocale();
   return (
-    <Stack.Navigator
+    <Stack.Navigator initialRouteName="SettingsMain"
       screenOptions={{
         headerShown: false,
         gestureDirection: isRTL === I18nManager.isRTL ? 'horizontal' : 'horizontal-inverted',
@@ -202,6 +204,12 @@ function AppContent() {
         <Tab.Screen 
           name="Settings" 
           component={SettingsStack}
+          listeners={({ navigation }) => ({
+            tabPress: event => {
+              event.preventDefault();
+              navigation.navigate('Settings', { screen: 'SettingsMain', initial: false });
+            },
+          })}
           options={{ tabBarLabel: tr('navigation.settings', { ns: 'common' }) }}
         />
       </Tab.Navigator>

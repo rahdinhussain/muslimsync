@@ -469,6 +469,8 @@
     "nextFajr": "Subuh berikutnya",
     "third": "Akhir sepertiga malam pertama",
     "midnight": "Tengah malam syar’i",
-    "malikiNote": "Dalam mazhab Maliki, segerakan Magrib. Tabel menunjukkan batas jadwal umum. Waktu ikhtiar dan darurat berbeda menurut salat dan mazhab."
+    "malikiNote": "Dalam mazhab Maliki, segerakan Magrib. Tabel menunjukkan batas jadwal umum. Waktu ikhtiar dan darurat berbeda menurut salat dan mazhab.",
+    "start": "Mulai",
+    "end": "Selesai"
   }
 }

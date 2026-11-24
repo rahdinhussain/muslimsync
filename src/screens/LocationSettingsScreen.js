@@ -42,7 +42,9 @@ export default function LocationSettingsScreen() {
       await savePlace(place);
       setCurrentCity(place.label);
       setCurrentLocation(manual ? null : place);
-      Alert.alert(tr('dua.success'), tr('locationSettings.locationUpdatedSuccessfully'));
+      // Home shortcuts and Settings each retain their own back destination.
+      if (navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate('SettingsMain');
     } catch {
       Alert.alert(tr('status.error', { ns: 'common' }), tr('locationSettings.failedToUpdateLocationPleaseTryAgain'));
     } finally { setUpdating(false); }

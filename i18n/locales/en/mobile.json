@@ -469,6 +469,8 @@
     "nextFajr": "Next Fajr",
     "third": "First third of the night",
     "midnight": "Islamic midnight",
-    "malikiNote": "In the Maliki school, pray Maghrib promptly. The table gives timetable boundaries. The times of choice and necessity differ by prayer and school."
+    "malikiNote": "In the Maliki school, pray Maghrib promptly. The table gives timetable boundaries. The times of choice and necessity differ by prayer and school.",
+    "start": "Start",
+    "end": "End"
   }
 }

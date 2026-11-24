@@ -1,17 +1,18 @@
 import { LocalizedSafeAreaView as SafeAreaView } from '../components/LocalizedPrimitives';
 import { LocalizedText as Text } from '../components/LocalizedPrimitives';
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, AppState, Dimensions, Animated } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, AppState, Dimensions } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CACHE, currentPrayerPlace, locatePrayerPlace, savePlace, placeKey, readMethod, readMadhhab } from '../utils/prayerPreferences';
+import { CACHE, currentPrayerPlace, placeKey, readMethod, readMadhhab } from '../utils/prayerPreferences';
 import {OfflineButton} from '../components/OfflineButton';
+import {PrayerScheduleTable} from '../components/PrayerScheduleTable';
 import {readMonth,savePrayerMonth} from '../utils/offlineContent';
 import schedule from '../utils/prayerSchedule.cjs';
-import { tr, prayerLabel, formatDate, formatPrayerTime } from '../i18n';
+import { tr, prayerLabel, formatDate } from '../i18n';
 import { useAppLocale } from '../context/LocaleContext';
 
 
@@ -29,9 +30,7 @@ export default function PrayerTimesScreen() {
   const [now, setNow] = useState(Date.now());
   const [windowData, setWindowData] = useState(null);
   const [savedMonth,setSavedMonth]=useState('');
-  const [locating,setLocating] = useState(false);
   const [pending, setPending] = useState(true);
-  const glowAnim = useRef(new Animated.Value(0)).current;
   const place = settings?.place;
   const method = settings?.method;
   const madhhab = settings?.madhhab;
@@ -49,9 +48,9 @@ export default function PrayerTimesScreen() {
   const clock = t => schedule.clock(t, validDay, locale, matching?.days[tomorrow]);
   const active = day === today ? schedule.activePrayers(validDay, matching?.days[tomorrow], now, matching?.days[schedule.offsetDay(day,-1)]) : {};
   const nextPrayer = active.next;
-  const cityName = place?.label;
+  const cityName = place?.label || place?.city;
   const refresh = () => setRevision(value => value + 1);
-  const openLocation = () => navigation.navigate('Settings', { screen: 'Location' });
+  const openLocation = () => navigation.navigate('Location');
 
   useEffect(() => {
     if (!focused) return;
@@ -71,15 +70,6 @@ export default function PrayerTimesScreen() {
     });
     return () => { clearInterval(tick); listener.remove(); };
   }, [focused]);
-
-  useEffect(() => {
-    if (!focused) return;
-    const glow = Animated.loop(Animated.sequence([1, 0].map(toValue =>
-      Animated.timing(glowAnim, { toValue, duration: 2000, useNativeDriver: false })
-    )));
-    glow.start();
-    return () => glow.stop();
-  }, [focused, glowAnim]);
 
   useEffect(() => {
     if (!focused || !key) return;
@@ -120,55 +110,12 @@ export default function PrayerTimesScreen() {
       setPending(false);
       if (results.some(Boolean)) await AsyncStorage.setItem(CACHE, JSON.stringify({key, days, zone: days[day]?.zone || days[tomorrow]?.zone})).catch(() => {});
     }
-    load().finally(() => clearTimeout(timeout));
+    load().catch(() => { if (active) setPending(false); }).finally(() => clearTimeout(timeout));
     return () => { active = false; controller.abort(); clearTimeout(timeout); };
   }, [key, day, tomorrow, focused, revision]);
 
-  // Check if a prayer is the current active prayer
-  const isCurrentPrayer = (prayerName) => {
-    return active.current === prayerName;
-  };
-
-  // Get animated border style for current prayer
-  const getAnimatedBorderStyle = (prayerName) => {
-    if (!isCurrentPrayer(prayerName)) {
-      return {};
-    }
-
-    const shadowRadius = glowAnim.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [8, 16, 8],
-    });
-
-    const opacity = glowAnim.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.6, 1, 0.6],
-    });
-
-    return {
-      borderWidth: 3, // Constant border width
-      borderColor: '#39FF14', // Neon green
-      shadowColor: '#39FF14',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: opacity,
-      shadowRadius: shadowRadius,
-      elevation: glowAnim.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [8, 16, 8],
-      }),
-    };
-  };
-
-  const prayerNames = {
-    Fajr: { name: 'Fajr', icon: 'sunny', color: '#FFA500' },
-    Dhuhr: { name: 'Dhuhr', icon: 'sunny', color: '#FFD700' },
-    Asr: { name: 'Asr', icon: 'partly-sunny', color: '#FF8C00' },
-    Maghrib: { name: 'Maghrib', icon: 'moon', color: '#FF6347' },
-    Isha: { name: 'Isha', icon: 'moon', color: '#4B0082' },
-  };
-
   const quickActions = [
-    {id:'books',title:tr('library.books'),icon:'library-outline',color:colors.text,screen:'Settings',params:{screen:'Books'}},
+    {id:'books',title:tr('library.books'),icon:'library-outline',color:colors.text,screen:'Settings',params:{screen:'Books',initial:false}},
     {
       id: 1,
       title: tr("prayerTimes.readQuran"),
@@ -225,156 +172,28 @@ export default function PrayerTimesScreen() {
       marginTop: 10,
       color: colors.textSecondary,
     },
-    dateHeader: {
-      backgroundColor: colors.header,
-      padding: 20,
-      paddingTop: 10,
-      borderBottomLeftRadius: 25,
-      borderBottomRightRadius: 25,
-    },
-    arabicDate: {
-      fontSize: 20,
-      color: colors.text,
-      fontWeight: '600',
-      textAlign: 'center',
-      marginBottom: 8,
-      fontFamily: 'System',
-    },
-    englishDate: {
-      fontSize: 16,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginBottom: 15,
-    },
-    todayButton: {
-      backgroundColor: colors.cardSecondary,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      borderRadius: 20,
-      marginHorizontal: 15,
-    },
-    todayButtonText: {
-      color: colors.text,
-      fontWeight: '600',
-    },
     nextPrayerCard: {
       backgroundColor: colors.cardSecondary,
-      margin: 20,
-      padding: 20,
+      marginHorizontal: 16,
+      marginTop: 8,
+      marginBottom: 12,
+      paddingHorizontal: 16,
+      paddingBottom: 4,
       borderRadius: 20,
-      ...(isDark ? {} : {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }),
     },
-    nextPrayerTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-    },
-    nextPrayerLeft: {
-      flex: 1,
-      marginEnd: 15,
-    },
-    nextPrayerRight: {
-      flex: 1,
-      alignItems: 'flex-end',
-    },
-    cardDateText: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: isRTL ? 'left' : 'right',
-      marginBottom: 4,
-    },
-    cityText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: 8,
-      textAlign: isRTL ? 'left' : 'right',
-    },
-    cardDateControls: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      alignItems: 'center',
-    },
-    cardDateButton: {
-      padding: 8,
-    },
-    nextPrayerLabel: {
-      color: colors.textSecondary,
-      fontSize: 14,
-      marginBottom: 5,
-    },
-    nextPrayerName: {
-      color: colors.text,
-      fontSize: 32,
-      fontWeight: 'bold',
-      marginBottom: 10,
-    },
-    nextPrayerTime: {
-      color: colors.text,
-      fontSize: 24,
-      fontWeight: '600',
-    },
-    prayerCard: {
-      flexDirection: 'row',
-      backgroundColor: colors.card,
-      borderRadius: 15,
-      padding: 20,
-      marginBottom: 15,
-      alignItems: 'center',
-      ...(isDark ? {} : {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }),
-    },
-    prayerIconContainer: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
-      backgroundColor: colors.iconBackground,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginEnd: 15,
-    },
-    prayerName: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    prayerTime: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    refreshButton: {
-      flexDirection: 'row',
-      backgroundColor: colors.cardSecondary,
-      margin: 20,
-      padding: 15,
-      borderRadius: 15,
-      justifyContent: 'center',
-      alignItems: 'center',
-      ...(isDark ? {} : {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }),
-    },
-    refreshButtonText: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '600',
-      marginStart: 10,
-    },
+    cardTopRow: { flexDirection: 'row', alignItems: 'center' },
+    cityButton: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    cityText: { color: colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
+    iconButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    nextPrayerLabel: { color: colors.textSecondary, fontSize: 12 },
+    nextPrayerRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
+    nextPrayerName: { color: colors.text, fontSize: 28, fontWeight: 'bold', flexShrink: 1 },
+    nextPrayerTime: { color: colors.text, fontSize: 26, fontWeight: '600', fontVariant: ['tabular-nums'] },
+    cardDateControls: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+    cardDateText: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', flex: 1 },
+    todayButtonText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+    status: { color: colors.textSecondary, marginHorizontal: 20, marginBottom: 12, fontSize: 13 },
+    calculationLink: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, minHeight: 44 },
     sectionTitle: {
       fontSize: 22,
       fontWeight: 'bold',
@@ -448,103 +267,65 @@ export default function PrayerTimesScreen() {
       <ScrollView style={dynamicStyles.container}>
 
         <View style={dynamicStyles.nextPrayerCard}>
-          <View style={dynamicStyles.nextPrayerTopRow}>
-            <View style={dynamicStyles.nextPrayerLeft}>
-              {nextPrayer ? <>
-              <Text style={dynamicStyles.nextPrayerLabel}>{tr("prayers.nextPrayer", { ns: 'common' })}</Text>
-              <Text style={dynamicStyles.nextPrayerName}>{prayerLabel(nextPrayer.name)}</Text>
-              <Text style={dynamicStyles.nextPrayerTime}>
-                {formatPrayerTime(nextPrayer.wall)}
-              </Text>
-              </> : <Text style={dynamicStyles.nextPrayerLabel}>{tr("mosqueSchedule.prayerSchedule")}</Text>}
-            </View>
-            <View style={dynamicStyles.nextPrayerRight}>
-              <Text style={dynamicStyles.cardDateText}>{formatDate(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
-              {cityName && (
-                <Text style={dynamicStyles.cityText}>{cityName}</Text>
-              )}
-              <View style={dynamicStyles.cardDateControls}>
-                <TouchableOpacity
-                  onPress={() => setChosenDay(schedule.offsetDay(day, -1))}
-                  style={dynamicStyles.cardDateButton}
-                >
-                  <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={colors.text} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setChosenDay(null)}
-                  style={dynamicStyles.todayButton}
-                >
-                  <Text style={dynamicStyles.todayButtonText}>{tr("prayers.today", { ns: 'common' })}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setChosenDay(schedule.offsetDay(day, 1))}
-                  style={dynamicStyles.cardDateButton}
-                >
-                  <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-            </View>
+          <View style={dynamicStyles.cardTopRow}>
+            <TouchableOpacity testID="prayer-city" accessibilityRole="button"
+              accessibilityLabel={[cityName, tr('settings.location', { ns: 'common' })].filter(Boolean).join(' · ')}
+              onPress={openLocation} style={dynamicStyles.cityButton}>
+              <Ionicons name="location-outline" size={16} color={colors.text} />
+              <Text style={dynamicStyles.cityText} numberOfLines={2}>{cityName || tr('settings.location', { ns: 'common' })}</Text>
+              <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={tr('prayerTimes.refreshTimes')}
+              onPress={refresh} style={dynamicStyles.iconButton}>
+              <Ionicons name="refresh-outline" size={18} color={colors.text} />
+            </TouchableOpacity>
+            {place && <OfflineButton iconOnly saved={savedMonth===key+day.slice(0,7)}
+              label={savedMonth===key+day.slice(0,7)?'library.updateMonth':'library.saveMonth'}
+              onSave={async()=>{await savePrayerMonth(place,method,key,day,madhhab);refresh();}} />}
+          </View>
+          <Text style={dynamicStyles.nextPrayerLabel}>{tr(nextPrayer ? 'prayers.nextPrayer' : 'prayers.today', { ns: 'common' })}</Text>
+          <View style={dynamicStyles.nextPrayerRow}>
+            <Text style={dynamicStyles.nextPrayerName}>{nextPrayer ? prayerLabel(nextPrayer.name) : tr('general.title')}</Text>
+            {nextPrayer && <Text style={dynamicStyles.nextPrayerTime}>{clock(nextPrayer.time)}</Text>}
+          </View>
+          <View style={dynamicStyles.cardDateControls}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={tr('library.previous')}
+              onPress={() => setChosenDay(schedule.offsetDay(day, -1))} style={dynamicStyles.iconButton}>
+              <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={18} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={dynamicStyles.cardDateText}>{formatDate(selectedDate, { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+            {day !== today && <TouchableOpacity accessibilityRole="button" onPress={() => setChosenDay(null)} style={dynamicStyles.iconButton}>
+              <Text style={dynamicStyles.todayButtonText}>{tr('prayers.today', { ns: 'common' })}</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={tr('library.next')}
+              onPress={() => setChosenDay(schedule.offsetDay(day, 1))} style={dynamicStyles.iconButton}>
+              <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={18} color={colors.text} />
+            </TouchableOpacity>
           </View>
         </View>
 
-      {(!validDay || matching?.offline || place?.lastKnown) && <View style={dynamicStyles.prayerCard}>
-        <Text style={{ color: colors.text, flexShrink: 1 }}>{tr(!place ? 'prayerTimes.chooseArea' : validDay ? 'prayerTimes.savedSchedule' : pending ? 'mosqueSchedule.loadingPrayerTimes' : 'prayerTimes.noVerifiedTimes')}</Text>
-      </View>}
-      <TouchableOpacity disabled={locating} style={dynamicStyles.refreshButton} onPress={async()=>{
-        setLocating(true);
-        try { const current=await locatePrayerPlace(); await savePlace(current); setChosenDay(null); refresh(); }
-        catch { Alert.alert(tr('general.error')); }
-        finally { setLocating(false); }
-      }}><Text style={dynamicStyles.refreshButtonText}>{tr('general.gps')}</Text></TouchableOpacity>
-      <TouchableOpacity onPress={openLocation} style={dynamicStyles.refreshButton}>
-        <Text style={dynamicStyles.refreshButtonText}>{tr('settings.location', { ns: 'common' })}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={dynamicStyles.refreshButton} onPress={() => navigation.navigate('Settings', {screen:'PrayerTimeCalculation'})}>
-        <Text style={dynamicStyles.refreshButtonText}>{tr('general.school')} · {tr('general.'+(madhhab || 'shafii'))}</Text>
-      </TouchableOpacity>
-      {validDay && <Text style={[dynamicStyles.featureDescription,{paddingHorizontal:16}]}>{validDay.zone} · {validDay.method}{'\n'}{tr('general.range')}{validDay.polar ? '\n'+tr('general.polar') : ''}</Text>}
-      {place && <OfflineButton saved={savedMonth===key+day.slice(0,7)} label={savedMonth===key+day.slice(0,7)?'library.updateMonth':'library.saveMonth'}
-        onSave={async()=>{await savePrayerMonth(place,method,key,day,madhhab);refresh();}}/>}
-      <View style={styles.prayerTimesContainer}>
-        {Object.entries(prayerNames).map(([key, prayer]) => (
-          <Animated.View 
-            key={key} 
-            style={[
-              dynamicStyles.prayerCard,
-              getAnimatedBorderStyle(prayer.name),
-            ]}
-          >
-            <View style={dynamicStyles.prayerIconContainer}>
-              <Ionicons name={prayer.icon} size={28} color={prayer.color} />
-            </View>
-            <View style={styles.prayerInfo}>
-              <Text style={dynamicStyles.prayerName}>{prayerLabel(prayer.name)}</Text>
-              <Text style={dynamicStyles.prayerTime}>
-                {clock(ranges[key]?.start)} – {clock(ranges[key]?.end)}
-              </Text>
-            </View>
-          </Animated.View>
-        ))}
-      </View>
-
-      <TouchableOpacity
-        style={dynamicStyles.refreshButton}
-        onPress={refresh}
-      >
-        <Ionicons name="refresh" size={20} color={colors.text} />
-        <Text style={dynamicStyles.refreshButtonText}>{tr("prayerTimes.refreshTimes")}</Text>
-      </TouchableOpacity>
-
-      {validDay && <View style={styles.quickActionsContainer}>
-        {Object.entries(night).map(([label,time])=><Text key={label} style={dynamicStyles.featureDescription}>{tr('general.'+label)} · {clock(time)}</Text>)}
-        {madhhab==='maliki' && <Text style={dynamicStyles.featureDescription}>{tr('general.malikiNote')}</Text>}
-        <Text style={dynamicStyles.sectionTitle}>{tr('general.restricted')}</Text>
-        {['sunrise','zenith','sunset'].map(name=><View key={name} style={dynamicStyles.prayerCard}>
-          <View style={styles.prayerInfo}><Text style={dynamicStyles.prayerName}>{tr('general.'+name)}</Text>
-          <Text style={dynamicStyles.prayerTime}>{periods[name] ? periods[name].map(clock).join(' – ') : '—'}</Text></View>
-        </View>)}
-        <Text style={dynamicStyles.featureDescription}>{tr('general.guidance')}</Text>
-      </View>}
+        {(!validDay || matching?.offline || place?.lastKnown) && <Text style={dynamicStyles.status}>
+          {tr(!place ? 'prayerTimes.chooseArea' : validDay ? 'prayerTimes.savedSchedule' : pending ? 'mosqueSchedule.loadingPrayerTimes' : 'prayerTimes.noVerifiedTimes')}
+        </Text>}
+        <PrayerScheduleTable ranges={ranges} clock={clock} current={active.current} />
+        {validDay && <>
+          <Text style={[dynamicStyles.sectionTitle, { fontSize: 16, marginHorizontal: 20, marginTop: 4, marginBottom: 8 }]}>{tr('general.restricted')}</Text>
+          <PrayerScheduleTable restricted periods={periods} clock={clock} />
+        </>}
+        <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('PrayerTimeCalculation')}
+          style={dynamicStyles.calculationLink}>
+          <Ionicons name="options-outline" size={16} color={colors.textSecondary} />
+          <Text style={[dynamicStyles.featureDescription, { flex: 1 }]}>{tr('general.school')} · {tr('general.'+(madhhab || 'shafii'))}</Text>
+          <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {validDay && <View style={{ marginHorizontal: 20, marginBottom: 20, gap: 8 }}>
+          <Text style={dynamicStyles.featureDescription}>{validDay.zone} · {validDay.method}</Text>
+          <Text style={dynamicStyles.featureDescription}>{tr('general.range')}</Text>
+          {Object.entries(night).map(([label,time])=><Text key={label} style={dynamicStyles.featureDescription}>{tr('general.'+label)} · {clock(time)}</Text>)}
+          {madhhab==='maliki' && <Text style={dynamicStyles.featureDescription}>{tr('general.malikiNote')}</Text>}
+          <Text style={dynamicStyles.featureDescription}>{tr('general.guidance')}</Text>
+          {validDay.polar && <Text style={dynamicStyles.featureDescription}>{tr('general.polar')}</Text>}
+        </View>}
       <View style={styles.quickActionsContainer}>
         <Text style={dynamicStyles.sectionTitle}>{tr("prayerTimes.quickActions")}</Text>
         <View style={styles.quickActionsGrid}>
@@ -600,15 +381,6 @@ export default function PrayerTimesScreen() {
 }
 
 const styles = StyleSheet.create({
-  prayerTimesContainer: {
-    padding: 20,
-  },
-  prayerInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   quickActionsContainer: {
     padding: 20,
     paddingTop: 0,

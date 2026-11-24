@@ -469,6 +469,8 @@
     "nextFajr": "Sonraki fecir",
     "third": "Gecenin ilk üçte birinin sonu",
     "midnight": "Şer‘î gece yarısı",
-    "malikiNote": "Mâlikî mezhebinde akşam namazı geciktirilmeden kılınır. Tabloda genel vakit sınırları yer alır. İhtiyar ve zaruret vakitleri namaza ve mezhebe göre değişir."
+    "malikiNote": "Mâlikî mezhebinde akşam namazı geciktirilmeden kılınır. Tabloda genel vakit sınırları yer alır. İhtiyar ve zaruret vakitleri namaza ve mezhebe göre değişir.",
+    "start": "Başlangıç",
+    "end": "Bitiş"
   }
 }
